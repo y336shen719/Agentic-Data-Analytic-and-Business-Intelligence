@@ -1,0 +1,1 @@
+"""Planned chart generation tool."""

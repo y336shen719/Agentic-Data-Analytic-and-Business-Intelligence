@@ -1,0 +1,38 @@
+# Environment configuration and secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Python environments
+.venv/
+venv/
+env/
+.conda/
+
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local logs
+*.log
+logs/
+
+# DuckDB local state and temporary files
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# Downloaded datasets and generated artifacts
+data/raw/
+data/processed/
+data/downloads/
+artifacts/
+outputs/
+
+# Operating system files
+.DS_Store
