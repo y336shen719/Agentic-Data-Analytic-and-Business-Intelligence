@@ -460,9 +460,20 @@ class TestExecutionLimitAndPendingToolCalls:
         resp2 = AIMessage(content="Found 99441 orders.")
 
         fake_llm = FakeRecordingChatModel(responses=[resp1, resp2])
-        # Use real SQL tool wrapper in offline/memory mode
-        schema_tool, sql_tool = create_sql_tools()
-        graph = create_agent_graph(llm=fake_llm, tools=[schema_tool, sql_tool])
+
+        @tool
+        def execute_sql(query: str) -> dict:
+            """Fake offline SQL tool."""
+            return {
+                "status": "success",
+                "columns": ["n"],
+                "rows": [[99441]],
+                "row_count": 1,
+                "truncated": False,
+                "execution_time_ms": 1.0,
+            }
+
+        graph = create_agent_graph(llm=fake_llm, tools=[execute_sql])
 
         state = create_initial_state(messages=[HumanMessage(content="Count orders")])
         final_state = graph.invoke(state)
