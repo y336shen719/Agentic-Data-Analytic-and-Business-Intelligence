@@ -112,7 +112,7 @@ The engine and tool strictly forbid arbitrary Python code execution. Five allowl
 4. `detect_outliers`: IQR-based outlier detection with configurable multiplier (default 1.5).
 5. `groupby`: Secondary grouping and aggregations (`sum`, `mean`, `count`, `min`, `max`) on materialized datasets.
 
-### 3. Error Handling and Deferred Python Retry (Step 5.4)
+### 3. Python Error Recovery and Bounded Automatic Retry (Step 5.4)
 
 When `execute_python_analysis` encounters an invalid parameter, missing dataset ID, or invalid column, it returns a structured JSON error payload:
 
@@ -126,7 +126,11 @@ When `execute_python_analysis` encounters an invalid parameter, missing dataset 
 }
 ```
 
-- In Step 5.3, the structured error is delivered to the LLM via the standard `ToolMessage` in the execution loop.
-- The LLM can interpret the failure and decide the next action.
-- Automatic Python-specific classification, retry counters, and dedicated recovery nodes are intentionally **deferred to Step 5.4**.
+In Step 5.4:
+- The error is deterministically classified by `agent.python_error_classifier.classify_python_result`.
+- `inspect_tool_results` in LangGraph updates `AgentState.python_retry_count` and routes recoverable errors back to the LLM for self-correction.
+- Retries are strictly bounded by `max_python_retries` (default 2), preventing infinite correction loops.
+- Python and SQL retry counters operate completely independently.
+- See detailed documentation in [docs/python_error_recovery.md](file:///Users/yimingshen20000719/Desktop/Agentic%20AI%20System/docs/python_error_recovery.md).
+
 

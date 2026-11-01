@@ -22,13 +22,17 @@ class AgentState(TypedDict):
             (appends new messages or updates existing messages sharing the same ID).
         step_count: Cumulative count of completed LLM node invocations.
         last_sql: Most recently requested SQL query string, or None.
-        last_error: Latest SQL execution error ("<error_type>: <message>"), or None
-            after a successful SQL execution.
+        last_error: Latest execution error ("<error_type>: <message>"), or None
+            after a successful tool execution.
         sql_retry_count: Number of SQL correction retries actually executed for this
             request, excluding the initial attempt. A retry is a SQL execution that
             happens while ``last_error`` is set. Never reset within a request.
-        last_error_category: ``classify_sql_result`` category of ``last_error``
+        last_error_category: Classifier category of ``last_error``
             (None when ``last_error`` is None). Used for deterministic retry routing.
+        python_retry_count: Number of Python analysis correction retries executed for
+            the current analytical task. Resets upon successful recovery.
+        pending_python_recovery: Whether an unresolved recoverable Python failure is
+            currently awaiting corrective recovery. Preserved across intermediate SQL calls.
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
@@ -37,6 +41,8 @@ class AgentState(TypedDict):
     last_error: Optional[str]
     sql_retry_count: int
     last_error_category: Optional[str]
+    python_retry_count: int
+    pending_python_recovery: bool
 
 
 def create_initial_state(
@@ -46,6 +52,8 @@ def create_initial_state(
     last_error: Optional[str] = None,
     sql_retry_count: int = 0,
     last_error_category: Optional[str] = None,
+    python_retry_count: int = 0,
+    pending_python_recovery: bool = False,
 ) -> AgentState:
     """Helper to construct a fresh, typed initial AgentState dictionary.
 
@@ -56,6 +64,8 @@ def create_initial_state(
         last_error: Initial error string (default None).
         sql_retry_count: Initial retry count (default 0).
         last_error_category: Initial error category (default None).
+        python_retry_count: Initial Python retry count (default 0).
+        pending_python_recovery: Initial pending Python recovery state (default False).
 
     Returns:
         AgentState dictionary initialized with clean values.
@@ -67,4 +77,6 @@ def create_initial_state(
         "last_error": last_error,
         "sql_retry_count": sql_retry_count,
         "last_error_category": last_error_category,
+        "python_retry_count": python_retry_count,
+        "pending_python_recovery": pending_python_recovery,
     }

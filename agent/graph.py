@@ -7,17 +7,25 @@ Topology::
       v
      llm --(no tool_calls)--------------------------------> END
       |  --(max_steps reached, tool_calls pending)--------> limit_exceeded --> END
-      |  --(SQL calls would exceed retry budget)----------> recovery_stop --> END
+      |  --(SQL/Python calls would exceed retry budget)---> recovery_stop --> END
       v
     tools (ToolNode) --> inspect_tool_results
-                              |--(success / retry allowed / non-SQL)--> llm
+                              |--(success / retry allowed)-----------> llm
                               |--(non-retryable error / budget spent)-> recovery_stop --> END
 
-Counters:
-    * ``step_count``       - number of completed LLM invocations; bounded by ``max_steps``.
-    * ``sql_retry_count``  - SQL executions that ran while ``last_error`` was set (i.e. after a
-                             failed attempt), excluding the initial attempt; bounded by
-                             ``max_sql_retries``.
+Counters and State:
+    * ``step_count``              - number of completed LLM invocations; bounded by ``max_steps``.
+    * ``sql_retry_count``         - SQL executions that ran while an earlier SQL error was outstanding;
+                                    bounded by ``max_sql_retries``.
+    * ``python_retry_count``      - corrective retries for the active Python analysis task;
+                                    resets to 0 upon successful recovery; bounded by ``max_python_retries``.
+    * ``pending_python_recovery`` - boolean flag tracking whether an unresolved recoverable Python
+                                    failure is active. Preserved across intermediate SQL regeneration calls.
+
+Batch Precedence & Semantics:
+    1. Fail Closed: Non-retryable errors immediately determine batch outcome and route to recovery_stop.
+    2. No Silent Masking: Recoverable errors in a batch are never cleared by unrelated successes in the same batch.
+    3. Independent Budgets: SQL and Python retry counters operate independently.
 """
 
 from __future__ import annotations
@@ -33,13 +41,25 @@ from langgraph.prebuilt import ToolNode
 
 from agent.llm import create_llm
 from agent.prompts import SYSTEM_PROMPT
+from agent.python_error_classifier import (
+    CATEGORY_INTERNAL_FAILURE,
+    CATEGORY_INVALID_DATASET_STRUCTURE,
+    CATEGORY_MISSING_DATASET,
+    CATEGORY_POLICY_VIOLATION,
+    CATEGORY_UNKNOWN_ERROR,
+    MALFORMED_RESULT,
+    RECOVERABLE_PYTHON_CATEGORIES,
+    classify_python_result,
+)
 from agent.sql_error_classifier import RECOVERABLE_SQL_ERROR, classify_sql_result
 from agent.state import AgentState
 from agent.tool_wrappers import create_sql_tools
 
 DEFAULT_MAX_STEPS: int = 12
 DEFAULT_MAX_SQL_RETRIES: int = 2
+DEFAULT_MAX_PYTHON_RETRIES: int = 2
 SQL_TOOL_NAME: str = "execute_sql"
+PYTHON_TOOL_NAME: str = "execute_python_analysis"
 _MAX_ERROR_CHARS: int = 500
 
 
@@ -87,6 +107,11 @@ def _sql_call_count(message: Any) -> int:
     return sum(1 for tc in calls if tc.get("name") == SQL_TOOL_NAME)
 
 
+def _python_call_count(message: Any) -> int:
+    calls = getattr(message, "tool_calls", None) or []
+    return sum(1 for tc in calls if tc.get("name") == PYTHON_TOOL_NAME)
+
+
 def _unexecuted_tool_messages(message: Any, reason: str) -> list[BaseMessage]:
     """One error ToolMessage per pending tool call, keeping the original tool_call_id."""
     out: list[BaseMessage] = []
@@ -104,46 +129,144 @@ def _unexecuted_tool_messages(message: Any, reason: str) -> list[BaseMessage]:
 
 
 def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
-    """Classify SQL results of the latest ToolNode run (no SQL is executed here)."""
+    """Classify tool results of the latest ToolNode run (SQL and Python analysis)."""
     ai_msg, tool_msgs = _latest_tool_batch(state.get("messages", []))
     if ai_msg is None:
         return {}
 
     running_error = state.get("last_error")
     running_category = state.get("last_error_category")
-    retries = state.get("sql_retry_count", 0)
-    saw_sql = False
+    sql_retries = state.get("sql_retry_count", 0)
+    python_retries = state.get("python_retry_count", 0)
+    pending_py_recovery = state.get("pending_python_recovery", False)
+    saw_relevant_tool = False
 
-    # Deterministic order: the order of the originating tool calls, SQL calls only.
+    tool_events: list[dict[str, Any]] = []
+
+    # Deterministic order: the order of originating tool calls
     for tc in ai_msg.tool_calls:
-        if tc.get("name") != SQL_TOOL_NAME:
+        tool_name = tc.get("name")
+        if tool_name not in (SQL_TOOL_NAME, PYTHON_TOOL_NAME):
             continue
-        saw_sql = True
-
+        saw_relevant_tool = True
         msg = tool_msgs.get(tc.get("id"))
-        # A missing or mismatched ToolMessage is never treated as success.
-        result = _parse_tool_content(msg) if msg is not None and msg.name in (None, SQL_TOOL_NAME) else None
-        outcome = classify_sql_result(result)
 
-        # A SQL execution that happens while an earlier failure is outstanding is a retry.
-        if running_error is not None:
-            retries += 1
+        if tool_name == SQL_TOOL_NAME:
+            result = _parse_tool_content(msg) if msg is not None and msg.name in (None, SQL_TOOL_NAME) else None
+            outcome = classify_sql_result(result)
+            tool_events.append({"tool": SQL_TOOL_NAME, "call_id": tc.get("id"), "outcome": outcome})
+        elif tool_name == PYTHON_TOOL_NAME:
+            result = _parse_tool_content(msg) if msg is not None and msg.name in (None, PYTHON_TOOL_NAME) else None
+            outcome = classify_python_result(result)
+            tool_events.append({"tool": PYTHON_TOOL_NAME, "call_id": tc.get("id"), "outcome": outcome})
 
-        if outcome["status"] == "success":
-            running_error, running_category = None, None
-            continue
-
-        running_error = f"{outcome['error_type']}: {outcome['error_message']}"[:_MAX_ERROR_CHARS]
-        running_category = outcome["category"]
-        if not outcome["retryable"]:
-            break  # fail closed: first non-retryable failure decides; later results can't mask it
-
-    if not saw_sql:
+    if not saw_relevant_tool:
         return {}
+
+    # Update retry counters for invocations that ran during recovery
+    curr_sql_err = (running_category == RECOVERABLE_SQL_ERROR)
+    curr_py_pending = pending_py_recovery
+
+    for e in tool_events:
+        if e["tool"] == SQL_TOOL_NAME:
+            if curr_sql_err:
+                sql_retries += 1
+            if e["outcome"]["status"] == "error":
+                curr_sql_err = bool(e["outcome"]["retryable"])
+            else:
+                curr_sql_err = False
+        elif e["tool"] == PYTHON_TOOL_NAME:
+            if curr_py_pending:
+                python_retries += 1
+            if e["outcome"]["status"] == "error":
+                if e["outcome"]["retryable"]:
+                    curr_py_pending = True
+                else:
+                    curr_py_pending = False
+
+    # 1. Non-retryable failures take absolute precedence (Fail Closed)
+    non_retryable_event = next(
+        (e for e in tool_events if e["outcome"]["status"] == "error" and not e["outcome"]["retryable"]),
+        None,
+    )
+    if non_retryable_event is not None:
+        running_error = f"{non_retryable_event['outcome']['error_type']}: {non_retryable_event['outcome']['error_message']}"[:_MAX_ERROR_CHARS]
+        running_category = non_retryable_event["outcome"]["category"]
+        if non_retryable_event["tool"] == PYTHON_TOOL_NAME:
+            pending_py_recovery = False
+        return {
+            "last_error": running_error,
+            "last_error_category": running_category,
+            "sql_retry_count": sql_retries,
+            "python_retry_count": python_retries,
+            "pending_python_recovery": pending_py_recovery,
+        }
+
+    # 2. Recoverable errors must not be masked by successes in the same batch
+    recoverable_py_events = [
+        e for e in tool_events if e["tool"] == PYTHON_TOOL_NAME and e["outcome"]["status"] == "error" and e["outcome"]["retryable"]
+    ]
+    recoverable_sql_events = [
+        e for e in tool_events if e["tool"] == SQL_TOOL_NAME and e["outcome"]["status"] == "error" and e["outcome"]["retryable"]
+    ]
+
+    if recoverable_py_events:
+        # A Python analysis failed: mark recovery pending, preserve error
+        first_err = recoverable_py_events[0]
+        running_error = f"{first_err['outcome']['error_type']}: {first_err['outcome']['error_message']}"[:_MAX_ERROR_CHARS]
+        running_category = first_err["outcome"]["category"]
+        pending_py_recovery = True
+        return {
+            "last_error": running_error,
+            "last_error_category": running_category,
+            "sql_retry_count": sql_retries,
+            "python_retry_count": python_retries,
+            "pending_python_recovery": pending_py_recovery,
+        }
+
+    if recoverable_sql_events:
+        # Check if this was a pure SQL batch where a later SQL query succeeded (intra-batch SQL retry)
+        all_sql = all(e["tool"] == SQL_TOOL_NAME for e in tool_events)
+        has_later_sql_success = all_sql and any(
+            e["outcome"]["status"] == "success"
+            for e in tool_events[tool_events.index(recoverable_sql_events[0]):]
+        )
+        if has_later_sql_success:
+            running_error, running_category = None, None
+            # If no pending Python recovery was active, error is clear
+        else:
+            first_err = recoverable_sql_events[0]
+            running_error = f"{first_err['outcome']['error_type']}: {first_err['outcome']['error_message']}"[:_MAX_ERROR_CHARS]
+            running_category = first_err["outcome"]["category"]
+            if any(e["tool"] == PYTHON_TOOL_NAME and e["outcome"]["status"] == "success" for e in tool_events):
+                pending_py_recovery = False
+                python_retries = 0
+            return {
+                "last_error": running_error,
+                "last_error_category": running_category,
+                "sql_retry_count": sql_retries,
+                "python_retry_count": python_retries,
+                "pending_python_recovery": pending_py_recovery,
+            }
+
+    # 3. All tools in the batch succeeded
+    saw_python = any(e["tool"] == PYTHON_TOOL_NAME for e in tool_events)
+    if saw_python:
+        # Successful Python execution completes and resets Python recovery
+        running_error, running_category = None, None
+        python_retries = 0
+        pending_py_recovery = False
+    else:
+        # Only SQL was called and succeeded
+        if not pending_py_recovery:
+            running_error, running_category = None, None
+
     return {
         "last_error": running_error,
         "last_error_category": running_category,
-        "sql_retry_count": retries,
+        "sql_retry_count": sql_retries,
+        "python_retry_count": python_retries,
+        "pending_python_recovery": pending_py_recovery,
     }
 
 
@@ -153,6 +276,7 @@ def create_agent_graph(
     max_steps: int = DEFAULT_MAX_STEPS,
     system_prompt: Optional[str] = None,
     max_sql_retries: int = DEFAULT_MAX_SQL_RETRIES,
+    max_python_retries: int = DEFAULT_MAX_PYTHON_RETRIES,
 ) -> CompiledStateGraph:
     """Build and compile the stateful LangGraph agent workflow.
 
@@ -163,9 +287,11 @@ def create_agent_graph(
         system_prompt: Optional system instruction prompt. If None, defaults to SYSTEM_PROMPT.
         max_sql_retries: SQL correction retries allowed after the initial attempt
             (non-negative int; 0 disables correction). Defaults to 2.
+        max_python_retries: Python analysis correction retries allowed after the initial attempt
+            (non-negative int; 0 disables correction). Defaults to 2.
 
     Raises:
-        ValueError: If ``max_steps`` or ``max_sql_retries`` is invalid.
+        ValueError: If ``max_steps``, ``max_sql_retries``, or ``max_python_retries`` is invalid.
     """
     if isinstance(max_steps, bool) or not isinstance(max_steps, int) or max_steps <= 0:
         raise ValueError(
@@ -176,6 +302,11 @@ def create_agent_graph(
         raise ValueError(
             f"max_sql_retries must be a non-negative integer, got: {max_sql_retries!r} "
             f"(type: {type(max_sql_retries).__name__})"
+        )
+    if isinstance(max_python_retries, bool) or not isinstance(max_python_retries, int) or max_python_retries < 0:
+        raise ValueError(
+            f"max_python_retries must be a non-negative integer, got: {max_python_retries!r} "
+            f"(type: {type(max_python_retries).__name__})"
         )
 
     effective_llm = llm if llm is not None else create_llm()
@@ -217,31 +348,65 @@ def create_agent_graph(
 
         return updates
 
-
-    # 3. Recovery Stop Node: explain why the workflow terminated (SQL failure / retry budget)
+    # 3. Recovery Stop Node: explain why the workflow terminated (SQL/Python failure / retry budget)
     def recovery_stop_node(state: AgentState) -> Dict[str, Any]:
         messages = state.get("messages", [])
         last_message = messages[-1] if messages else None
-        pending = _unexecuted_tool_messages(last_message, f"the SQL correction retry limit ({max_sql_retries}) would be exceeded")
 
-        category = state.get("last_error_category")
-        error = state.get("last_error")
-        if pending:
+        # Pre-execution guard checks
+        py_calls = _python_call_count(last_message)
+        sql_calls = _sql_call_count(last_message)
+
+        allowed_py = max_python_retries - state.get("python_retry_count", 0)
+        if not state.get("pending_python_recovery", False):
+            allowed_py += 1
+
+        allowed_sql = max_sql_retries - state.get("sql_retry_count", 0)
+        if state.get("last_error_category") != RECOVERABLE_SQL_ERROR:
+            allowed_sql += 1
+
+        if py_calls > allowed_py or allowed_py < 0:
+            reason = f"the Python analysis correction retry limit ({max_python_retries}) would be exceeded"
+            pending = _unexecuted_tool_messages(last_message, reason)
+            text = (
+                f"Execution stopped: the requested Python analysis calls would exceed the Python "
+                f"analysis correction retry limit ({max_python_retries}). No pending tools were executed."
+            )
+        elif sql_calls > allowed_sql:
+            reason = f"the SQL correction retry limit ({max_sql_retries}) would be exceeded"
+            pending = _unexecuted_tool_messages(last_message, reason)
             text = (
                 f"Execution stopped: the requested SQL calls would exceed the SQL correction retry "
                 f"limit ({max_sql_retries}). No pending tools were executed."
             )
-        elif category == RECOVERABLE_SQL_ERROR:
-            text = (
-                f"Execution stopped: SQL still failed after {state.get('sql_retry_count', 0)} correction "
-                f"retries (limit {max_sql_retries}). Last error: {error}"
-            )
-        elif category == "non_retryable_security_error":
-            text = f"Execution stopped: the SQL query was rejected by security policy and will not be retried. Error: {error}"
-        elif category == "non_retryable_resource_error":
-            text = f"Execution stopped: SQL execution failed with an operational error and will not be retried. Error: {error}"
         else:
-            text = f"Execution stopped: SQL returned an unexpected or unrecognised result and will not be retried. Error: {error}"
+            pending = []
+            category = state.get("last_error_category")
+            error = state.get("last_error")
+            if category == RECOVERABLE_SQL_ERROR:
+                text = (
+                    f"Execution stopped: SQL still failed after {state.get('sql_retry_count', 0)} correction "
+                    f"retries (limit {max_sql_retries}). Last error: {error}"
+                )
+            elif category in RECOVERABLE_PYTHON_CATEGORIES or state.get("pending_python_recovery", False):
+                text = (
+                    f"Execution stopped: Python analysis still failed after {state.get('python_retry_count', 0)} correction "
+                    f"retries (limit {max_python_retries}). Last error: {error}"
+                )
+            elif category == "non_retryable_security_error":
+                text = f"Execution stopped: the SQL query was rejected by security policy and will not be retried. Error: {error}"
+            elif category == "non_retryable_resource_error":
+                text = f"Execution stopped: SQL execution failed with an operational error and will not be retried. Error: {error}"
+            elif category == CATEGORY_INTERNAL_FAILURE:
+                text = f"Execution stopped: Python analysis encountered an internal failure and will not be retried. Error: {error}"
+            elif category == CATEGORY_POLICY_VIOLATION:
+                text = f"Execution stopped: Python analysis violated execution policy and will not be retried. Error: {error}"
+            elif category == CATEGORY_UNKNOWN_ERROR:
+                text = f"Execution stopped: Python analysis returned an unknown error and will not be retried. Error: {error}"
+            elif category == MALFORMED_RESULT:
+                text = f"Execution stopped: Python analysis returned a malformed result and will not be retried. Error: {error}"
+            else:
+                text = f"Execution stopped: Tool execution returned an unexpected or unrecognised result and will not be retried. Error: {error}"
 
         return {"messages": [*pending, AIMessage(content=text)]}
 
@@ -279,12 +444,18 @@ def create_agent_graph(
         if state.get("step_count", 0) >= max_steps:
             return "limit_exceeded"
 
-        # Pre-execution guard: SQL calls in one response cannot exceed the remaining budget.
-        # Remaining executions = retries left, plus one initial attempt if no failure is outstanding.
-        allowed = max_sql_retries - state.get("sql_retry_count", 0)
-        if state.get("last_error") is None:
-            allowed += 1
-        if _sql_call_count(last_message) > allowed:
+        # Pre-execution guard: SQL calls in one response cannot exceed remaining budget.
+        allowed_sql = max_sql_retries - state.get("sql_retry_count", 0)
+        if state.get("last_error_category") != RECOVERABLE_SQL_ERROR:
+            allowed_sql += 1
+        if _sql_call_count(last_message) > allowed_sql:
+            return "recovery_stop"
+
+        # Pre-execution guard: Python calls in one response cannot exceed remaining budget.
+        allowed_py = max_python_retries - state.get("python_retry_count", 0)
+        if not state.get("pending_python_recovery", False):
+            allowed_py += 1
+        if _python_call_count(last_message) > allowed_py or allowed_py < 0:
             return "recovery_stop"
 
         return "tools"
@@ -292,11 +463,16 @@ def create_agent_graph(
     def route_after_inspection(state: AgentState) -> str:
         if state.get("last_error") is None:
             return "llm"
-        if state.get("last_error_category") != RECOVERABLE_SQL_ERROR:
-            return "recovery_stop"
-        if state.get("sql_retry_count", 0) >= max_sql_retries:
-            return "recovery_stop"
-        return "llm"
+        category = state.get("last_error_category")
+        if category == RECOVERABLE_SQL_ERROR:
+            if state.get("sql_retry_count", 0) >= max_sql_retries:
+                return "recovery_stop"
+            return "llm"
+        if category in RECOVERABLE_PYTHON_CATEGORIES or state.get("pending_python_recovery", False):
+            if state.get("python_retry_count", 0) >= max_python_retries:
+                return "recovery_stop"
+            return "llm"
+        return "recovery_stop"
 
     # 6. Construct the Graph
     builder = StateGraph(AgentState)

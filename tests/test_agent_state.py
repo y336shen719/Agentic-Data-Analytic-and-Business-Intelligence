@@ -28,6 +28,23 @@ class TestAgentStateInitialization:
         assert state["last_sql"] is None
         assert state["last_error"] is None
         assert state["sql_retry_count"] == 0
+        assert state["last_error_category"] is None
+        assert state["python_retry_count"] == 0
+        assert state["pending_python_recovery"] is False
+
+    def test_pending_python_recovery_declared_in_state(self) -> None:
+        """Verify pending_python_recovery is explicitly declared in AgentState schema."""
+        from typing import get_type_hints
+        assert "pending_python_recovery" in AgentState.__annotations__
+        assert get_type_hints(AgentState)["pending_python_recovery"] is bool
+
+    def test_pending_python_recovery_initialization(self) -> None:
+        """Verify initialization defaults to False and accepts custom boolean values."""
+        default_state = create_initial_state()
+        assert default_state["pending_python_recovery"] is False
+
+        active_state = create_initial_state(pending_python_recovery=True)
+        assert active_state["pending_python_recovery"] is True
 
     def test_create_initial_state_custom_values(self) -> None:
         """Verify explicit initialization with custom parameters."""
