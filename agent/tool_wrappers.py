@@ -12,9 +12,26 @@ from pathlib import Path
 from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 from langchain_core.tools import BaseTool, tool
+from pydantic import BaseModel, Field
 
 from data.prepare_data import DEFAULT_DB_PATH
-from tools.dataset_store import DatasetStore
+from tools.chart_generation import (
+    DEFAULT_MAX_BINS,
+    DEFAULT_MAX_CATEGORIES,
+    DEFAULT_MAX_CHART_ROWS,
+    DEFAULT_MAX_FIGURE_BYTES,
+    DEFAULT_MAX_HEATMAP_COLUMNS,
+    DEFAULT_MAX_TITLE_LENGTH,
+    SUPPORTED_CHART_TYPES,
+    ChartGenerationEngine,
+    analysis_result_to_dataset_payload,
+)
+from tools.chart_registry import (
+    ChartRecord,
+    ChartRegistry,
+    ChartRegistryCapacityError,
+)
+from tools.dataset_store import DatasetCapacityError, DatasetStore
 from tools.python_analysis import (
     DEFAULT_MAX_CORR_COLUMNS,
     DEFAULT_MAX_PREVIEW_ROWS,
@@ -147,6 +164,11 @@ def create_python_analysis_tool(
         BaseTool instance named 'execute_python_analysis'.
     """
     if engine is not None:
+        if dataset_store is not None and engine.dataset_store is not dataset_store:
+            raise ValueError(
+                "Mismatched DatasetStore instances: the supplied engine.dataset_store "
+                "is not identical to the supplied dataset_store."
+            )
         effective_engine = engine
     else:
         store = dataset_store if dataset_store is not None else DatasetStore()
@@ -191,11 +213,41 @@ def create_python_analysis_tool(
             Structured JSON-compatible dictionary with 'status', 'dataset_id', 'operation',
             'result' (or 'error_type'/'error_message'), 'truncated', and 'warnings'.
         """
-        return effective_engine.analyze(
+        res = effective_engine.analyze(
             dataset_id=dataset_id,
             operation=operation,
             params=params,
         )
+
+        # Automatically register derived analysis results into the shared DatasetStore for supported operations
+        if res.get("status") == "success" and effective_engine.dataset_store is not None:
+            if operation == "detect_outliers":
+                res["derived_dataset_id"] = None
+                res["derived_dataset_status"] = "unsupported"
+                res["derived_dataset_error"] = "This operation does not produce a complete chart-ready dataset."
+            else:
+                try:
+                    payload = analysis_result_to_dataset_payload(res)
+                    derived_id = effective_engine.dataset_store.save(
+                        payload, query=f"derived_{operation}_{dataset_id}"
+                    )
+                    res["derived_dataset_id"] = derived_id
+                    res["derived_dataset_status"] = "registered"
+                except DatasetCapacityError:
+                    res["derived_dataset_id"] = None
+                    res["derived_dataset_status"] = "failed"
+                    res["derived_dataset_error"] = (
+                        "The analysis succeeded, but its derived dataset could not be registered "
+                        "because DatasetStore capacity was exceeded."
+                    )
+                except Exception:
+                    res["derived_dataset_id"] = None
+                    res["derived_dataset_status"] = "failed"
+                    res["derived_dataset_error"] = (
+                        "The analysis succeeded, but its derived dataset could not be registered."
+                    )
+
+        return res
 
     return execute_python_analysis
 
@@ -222,12 +274,198 @@ def create_python_analysis_tools(
     return ToolSequence((py_tool,))
 
 
+class ChartGenerationInput(BaseModel):
+    """Input schema for the generate_chart tool."""
+
+    dataset_id: str = Field(
+        ...,
+        description="Opaque dataset reference ID in the DatasetStore (e.g. 'ds_...').",
+    )
+    chart_type: str = Field(
+        ...,
+        description="Type of chart to generate: exactly one of 'bar', 'line', 'scatter', 'histogram', 'box', 'heatmap'.",
+    )
+    x_column: Optional[str] = Field(
+        default=None,
+        description="Column name for horizontal axis. Required for 'bar', 'line', 'scatter', 'histogram'; optional for 'box' (grouping); not used for 'heatmap'.",
+    )
+    y_column: Optional[str] = Field(
+        default=None,
+        description="Column name for vertical axis. Required for 'bar', 'line', 'scatter', 'box'; not used for 'histogram' or 'heatmap'.",
+    )
+    params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional chart-specific parameters. Supported options: title (str), orientation ('v'|'h' for bar), sort ('asc'|'desc' for bar), top_n (int for bar), color_column (str for bar, line, scatter, histogram, box), sort_x (bool for line), markers (bool for line), outlier_column (str for scatter), nbins (int for histogram), points ('outliers'|'all'|False for box), columns (list[str] for heatmap), correlation_method ('pearson'|'spearman' for heatmap), annotated (bool for heatmap), is_precomputed (bool for heatmap).",
+    )
+
+
+def create_chart_generation_tool(
+    dataset_store: Optional[DatasetStore] = None,
+    chart_registry: Optional[ChartRegistry] = None,
+    engine: Optional[ChartGenerationEngine] = None,
+    max_chart_rows: int = DEFAULT_MAX_CHART_ROWS,
+    max_categories: int = DEFAULT_MAX_CATEGORIES,
+    max_heatmap_columns: int = DEFAULT_MAX_HEATMAP_COLUMNS,
+    max_figure_bytes: int = DEFAULT_MAX_FIGURE_BYTES,
+    max_title_length: int = DEFAULT_MAX_TITLE_LENGTH,
+    max_bins: int = DEFAULT_MAX_BINS,
+) -> BaseTool:
+    """Factory creating a LangChain tool for generating Plotly charts.
+
+    Consumes datasets from an injected DatasetStore and stores generated Plotly Figure
+    specifications in an in-memory ChartRegistry. The LLM receives a lightweight reference
+    containing the opaque chart_id, dataset_id, chart_type, title, and metadata.
+
+    Args:
+        dataset_store: Injected DatasetStore. Required if engine is None.
+        chart_registry: In-memory registry to store full Plotly figures. If None, a new instance is created.
+        engine: Optional pre-configured ChartGenerationEngine.
+        max_chart_rows: Maximum rows allowed in dataset to prevent oversized figures.
+        max_categories: Maximum unique categories displayed on bar charts.
+        max_heatmap_columns: Maximum columns in correlation heatmaps.
+        max_figure_bytes: Maximum size in bytes of the serialized Plotly JSON figure.
+        max_title_length: Maximum allowed character length for chart title.
+        max_bins: Maximum allowed histogram bins.
+
+    Returns:
+        BaseTool instance named 'generate_chart'.
+    """
+    if engine is not None:
+        if dataset_store is not None and engine.dataset_store is not dataset_store:
+            raise ValueError(
+                "Mismatched DatasetStore instances: the supplied engine.dataset_store "
+                "is not identical to the supplied dataset_store."
+            )
+        effective_engine = engine
+    else:
+        store = dataset_store if dataset_store is not None else DatasetStore()
+        effective_engine = ChartGenerationEngine(
+            dataset_store=store,
+            max_chart_rows=max_chart_rows,
+            max_categories=max_categories,
+            max_heatmap_columns=max_heatmap_columns,
+            max_figure_bytes=max_figure_bytes,
+            max_title_length=max_title_length,
+            max_bins=max_bins,
+        )
+
+    effective_registry = chart_registry if chart_registry is not None else ChartRegistry()
+
+    @tool(args_schema=ChartGenerationInput)
+    def generate_chart(
+        dataset_id: str,
+        chart_type: str,
+        x_column: Optional[str] = None,
+        y_column: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Generate a deterministic Plotly visualization from a dataset stored in DatasetStore.
+
+        Call this tool to generate charts from datasets previously created via execute_sql or derived
+        from execute_python_analysis. The LLM receives a compact reference (chart_id, metadata); the
+        full Plotly figure JSON is preserved in application memory for downstream rendering.
+
+        Supported chart types and parameter contracts:
+        1. 'bar': Categorical ranking and comparison. Requires x_column and y_column. Does not automatically
+           aggregate duplicate categories. Top-N selects input observations after sorting. Supports orientation
+           ('v'|'h'), sort ('asc'|'desc'), top_n (int), and color_column (str).
+        2. 'line': Chronological or continuous sequence trends. Requires x_column and y_column. Supports
+           sort_x (bool), markers (bool), and color_column (str).
+        3. 'scatter': Relationship and distribution between two continuous numeric variables. Requires numeric
+           x_column and y_column. Supports color_column (str) and an existing, validated outlier_column (str).
+        4. 'histogram': Univariate frequency distribution across continuous numeric values. Requires numeric
+           x_column. Supports nbins (int) and color_column (str).
+        5. 'box': Statistical dispersion and quartiles across categories. Requires numeric y_column,
+           optionally supports categorical x_column. Supports points ('outliers'|'all'|False) and color_column (str).
+        6. 'heatmap': Correlation matrices across numeric columns. Supports raw-data correlation matrices via
+           columns (list[str]), correlation_method ('pearson'|'spearman'), and annotated (bool). Supports precomputed
+           correlation matrices from Python analysis via params: {"is_precomputed": true}. Only correlation heatmaps are supported.
+
+        Args:
+            dataset_id: Opaque dataset reference ID returned by execute_sql or derived_dataset_id from execute_python_analysis.
+            chart_type: Exactly one of 'bar', 'line', 'scatter', 'histogram', 'box', 'heatmap'.
+            x_column: Optional column name for horizontal axis (required for bar, line, scatter, histogram).
+            y_column: Optional column name for vertical axis (required for bar, line, scatter, box).
+            params: Optional dictionary of chart configuration options (title, orientation, sort, top_n, color_column, sort_x, markers, outlier_column, nbins, points, columns, correlation_method, annotated, is_precomputed).
+
+        Returns:
+            Structured JSON-compatible dictionary with 'status', 'chart_id', 'dataset_id',
+            'chart_type', 'title', and 'metadata' (or error details on failure).
+        """
+        res = effective_engine.generate(
+            dataset_id=dataset_id,
+            chart_type=chart_type,
+            x_column=x_column,
+            y_column=y_column,
+            params=params,
+        )
+
+        if res.get("status") == "success":
+            figure = res.get("figure", {})
+            try:
+                chart_id = effective_registry.save(
+                    figure=figure,
+                    dataset_id=res["dataset_id"],
+                    chart_type=res["chart_type"],
+                    title=res.get("title", ""),
+                    metadata=res.get("metadata", {}),
+                )
+                return {
+                    "status": "success",
+                    "chart_id": chart_id,
+                    "dataset_id": res["dataset_id"],
+                    "chart_type": res["chart_type"],
+                    "title": res.get("title", ""),
+                    "metadata": res.get("metadata", {}),
+                }
+            except ChartRegistryCapacityError as exc:
+                return {
+                    "status": "error",
+                    "dataset_id": res.get("dataset_id", dataset_id),
+                    "chart_type": res.get("chart_type", chart_type),
+                    "error_type": "ChartRegistryCapacityError",
+                    "error_message": str(exc),
+                }
+
+        return res
+
+    return generate_chart
+
+
+def create_chart_generation_tools(
+    dataset_store: Optional[DatasetStore] = None,
+    chart_registry: Optional[ChartRegistry] = None,
+    engine: Optional[ChartGenerationEngine] = None,
+    max_chart_rows: int = DEFAULT_MAX_CHART_ROWS,
+    max_categories: int = DEFAULT_MAX_CATEGORIES,
+    max_heatmap_columns: int = DEFAULT_MAX_HEATMAP_COLUMNS,
+    max_figure_bytes: int = DEFAULT_MAX_FIGURE_BYTES,
+    max_title_length: int = DEFAULT_MAX_TITLE_LENGTH,
+    max_bins: int = DEFAULT_MAX_BINS,
+) -> ToolSequence:
+    """Factory creating a sequence containing the 'generate_chart' tool."""
+    c_tool = create_chart_generation_tool(
+        dataset_store=dataset_store,
+        chart_registry=chart_registry,
+        engine=engine,
+        max_chart_rows=max_chart_rows,
+        max_categories=max_categories,
+        max_heatmap_columns=max_heatmap_columns,
+        max_figure_bytes=max_figure_bytes,
+        max_title_length=max_title_length,
+        max_bins=max_bins,
+    )
+    return ToolSequence((c_tool,))
+
+
 # Standalone default tool instances (preserved strictly for backward compatibility with older tests/imports).
 # WARNING: These standalone default instances do NOT share a DatasetStore with each other.
-# For integrated SQL -> DatasetStore -> Python Analytical workflows, callers must instantiate
-# a shared DatasetStore and inject it explicitly into create_sql_tools(dataset_store=store) and
-# create_python_analysis_tools(dataset_store=store).
+# For integrated SQL -> DatasetStore -> Python Analytical -> Chart workflows, callers must instantiate
+# a shared DatasetStore and inject it explicitly into create_sql_tools(dataset_store=store),
+# create_python_analysis_tools(dataset_store=store), and create_chart_generation_tools(dataset_store=store).
 default_schema_tool, default_sql_tool = create_sql_tools()
 default_python_tool = create_python_analysis_tool()
+default_chart_tool = create_chart_generation_tool()
+
 
 

@@ -9,3 +9,4 @@ matplotlib
 python-dotenv
 pytest
 sqlglot
+plotly

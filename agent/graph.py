@@ -60,7 +60,72 @@ DEFAULT_MAX_SQL_RETRIES: int = 2
 DEFAULT_MAX_PYTHON_RETRIES: int = 2
 SQL_TOOL_NAME: str = "execute_sql"
 PYTHON_TOOL_NAME: str = "execute_python_analysis"
+CHART_TOOL_NAME: str = "generate_chart"
+NON_RETRYABLE_CHART_ERROR: str = "non_retryable_chart_error"
 _MAX_ERROR_CHARS: int = 500
+
+
+def classify_chart_result(result: Any) -> Dict[str, Any]:
+    """Deterministically classify a chart generation tool result.
+
+    Outcomes:
+    - Success: status="success", category=None, retryable=False.
+    - Structured error: status="error", category=NON_RETRYABLE_CHART_ERROR, retryable=False.
+    - Malformed/missing: status="error", category=NON_RETRYABLE_CHART_ERROR, retryable=False.
+    """
+    if result is None:
+        return {
+            "status": "error",
+            "category": NON_RETRYABLE_CHART_ERROR,
+            "retryable": False,
+            "error_type": "MalformedChartResultError",
+            "error_message": "Chart tool result is missing or failed during execution.",
+        }
+    if not isinstance(result, dict):
+        return {
+            "status": "error",
+            "category": NON_RETRYABLE_CHART_ERROR,
+            "retryable": False,
+            "error_type": "MalformedChartResultError",
+            "error_message": f"Expected dict from chart tool, got {type(result).__name__}.",
+        }
+
+    status = result.get("status")
+    if status == "success":
+        chart_id = result.get("chart_id")
+        if not isinstance(chart_id, str) or not chart_id.strip():
+            return {
+                "status": "error",
+                "category": NON_RETRYABLE_CHART_ERROR,
+                "retryable": False,
+                "error_type": "MalformedChartResultError",
+                "error_message": "Chart tool reported success without a valid chart_id.",
+            }
+        return {
+            "status": "success",
+            "category": None,
+            "retryable": False,
+            "chart_id": chart_id,
+        }
+
+    if status == "error":
+        error_type = result.get("error_type") or "ChartGenerationError"
+        error_msg = result.get("error_message") or "Chart generation failed."
+        return {
+            "status": "error",
+            "category": NON_RETRYABLE_CHART_ERROR,
+            "retryable": False,
+            "error_type": str(error_type),
+            "error_message": str(error_msg),
+        }
+
+    return {
+        "status": "error",
+        "category": NON_RETRYABLE_CHART_ERROR,
+        "retryable": False,
+        "error_type": "MalformedChartResultError",
+        "error_message": f"Unexpected chart tool status: {status!r}.",
+    }
 
 
 def _parse_tool_content(msg: ToolMessage) -> Any:
@@ -146,7 +211,7 @@ def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
     # Deterministic order: the order of originating tool calls
     for tc in ai_msg.tool_calls:
         tool_name = tc.get("name")
-        if tool_name not in (SQL_TOOL_NAME, PYTHON_TOOL_NAME):
+        if tool_name not in (SQL_TOOL_NAME, PYTHON_TOOL_NAME, CHART_TOOL_NAME):
             continue
         saw_relevant_tool = True
         msg = tool_msgs.get(tc.get("id"))
@@ -159,6 +224,19 @@ def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
             result = _parse_tool_content(msg) if msg is not None and msg.name in (None, PYTHON_TOOL_NAME) else None
             outcome = classify_python_result(result)
             tool_events.append({"tool": PYTHON_TOOL_NAME, "call_id": tc.get("id"), "outcome": outcome})
+        elif tool_name == CHART_TOOL_NAME:
+            if msg is not None and getattr(msg, "status", "success") == "error":
+                outcome = {
+                    "status": "error",
+                    "category": NON_RETRYABLE_CHART_ERROR,
+                    "retryable": False,
+                    "error_type": "ChartExecutionError",
+                    "error_message": "Chart tool execution failed.",
+                }
+            else:
+                result = _parse_tool_content(msg) if msg is not None and msg.name in (None, CHART_TOOL_NAME) else None
+                outcome = classify_chart_result(result)
+            tool_events.append({"tool": CHART_TOOL_NAME, "call_id": tc.get("id"), "outcome": outcome})
 
     if not saw_relevant_tool:
         return {}
@@ -183,6 +261,9 @@ def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
                     curr_py_pending = True
                 else:
                     curr_py_pending = False
+        elif e["tool"] == CHART_TOOL_NAME:
+            # Chart calls never consume SQL or Python retry budgets
+            pass
 
     # 1. Non-retryable failures take absolute precedence (Fail Closed)
     non_retryable_event = next(
@@ -250,16 +331,24 @@ def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
             }
 
     # 3. All tools in the batch succeeded
-    saw_python = any(e["tool"] == PYTHON_TOOL_NAME for e in tool_events)
-    if saw_python:
+    saw_python_success = any(e["tool"] == PYTHON_TOOL_NAME and e["outcome"]["status"] == "success" for e in tool_events)
+    saw_sql_success = any(e["tool"] == SQL_TOOL_NAME and e["outcome"]["status"] == "success" for e in tool_events)
+
+    if saw_python_success:
         # Successful Python execution completes and resets Python recovery
-        running_error, running_category = None, None
         python_retries = 0
         pending_py_recovery = False
-    else:
-        # Only SQL was called and succeeded
-        if not pending_py_recovery:
+        if running_category in RECOVERABLE_PYTHON_CATEGORIES or running_category == CATEGORY_MISSING_DATASET:
             running_error, running_category = None, None
+
+    if saw_sql_success:
+        # Successful SQL execution completes SQL recovery
+        if running_category == RECOVERABLE_SQL_ERROR:
+            running_error, running_category = None, None
+
+    # If neither Python nor SQL was in recoverable state, or both resolved:
+    if not pending_py_recovery and running_category != RECOVERABLE_SQL_ERROR:
+        running_error, running_category = None, None
 
     return {
         "last_error": running_error,
@@ -383,7 +472,12 @@ def create_agent_graph(
             pending = []
             category = state.get("last_error_category")
             error = state.get("last_error")
-            if category == RECOVERABLE_SQL_ERROR:
+            if category == NON_RETRYABLE_CHART_ERROR:
+                text = (
+                    f"Execution stopped: chart generation failed and will not be automatically "
+                    f"retried. Error: {error}"
+                )
+            elif category == RECOVERABLE_SQL_ERROR:
                 text = (
                     f"Execution stopped: SQL still failed after {state.get('sql_retry_count', 0)} correction "
                     f"retries (limit {max_sql_retries}). Last error: {error}"
@@ -464,6 +558,8 @@ def create_agent_graph(
         if state.get("last_error") is None:
             return "llm"
         category = state.get("last_error_category")
+        if category == NON_RETRYABLE_CHART_ERROR:
+            return "recovery_stop"
         if category == RECOVERABLE_SQL_ERROR:
             if state.get("sql_retry_count", 0) >= max_sql_retries:
                 return "recovery_stop"
