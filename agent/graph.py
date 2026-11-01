@@ -103,6 +103,50 @@ def _unexecuted_tool_messages(message: Any, reason: str) -> list[BaseMessage]:
     return out
 
 
+def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
+    """Classify SQL results of the latest ToolNode run (no SQL is executed here)."""
+    ai_msg, tool_msgs = _latest_tool_batch(state.get("messages", []))
+    if ai_msg is None:
+        return {}
+
+    running_error = state.get("last_error")
+    running_category = state.get("last_error_category")
+    retries = state.get("sql_retry_count", 0)
+    saw_sql = False
+
+    # Deterministic order: the order of the originating tool calls, SQL calls only.
+    for tc in ai_msg.tool_calls:
+        if tc.get("name") != SQL_TOOL_NAME:
+            continue
+        saw_sql = True
+
+        msg = tool_msgs.get(tc.get("id"))
+        # A missing or mismatched ToolMessage is never treated as success.
+        result = _parse_tool_content(msg) if msg is not None and msg.name in (None, SQL_TOOL_NAME) else None
+        outcome = classify_sql_result(result)
+
+        # A SQL execution that happens while an earlier failure is outstanding is a retry.
+        if running_error is not None:
+            retries += 1
+
+        if outcome["status"] == "success":
+            running_error, running_category = None, None
+            continue
+
+        running_error = f"{outcome['error_type']}: {outcome['error_message']}"[:_MAX_ERROR_CHARS]
+        running_category = outcome["category"]
+        if not outcome["retryable"]:
+            break  # fail closed: first non-retryable failure decides; later results can't mask it
+
+    if not saw_sql:
+        return {}
+    return {
+        "last_error": running_error,
+        "last_error_category": running_category,
+        "sql_retry_count": retries,
+    }
+
+
 def create_agent_graph(
     llm: Optional[Any] = None,
     tools: Optional[Sequence[BaseTool]] = None,
@@ -173,48 +217,6 @@ def create_agent_graph(
 
         return updates
 
-    # 2. Inspection Node: classify SQL results of the latest ToolNode run (no SQL is executed here)
-    def inspect_tool_results(state: AgentState) -> Dict[str, Any]:
-        ai_msg, tool_msgs = _latest_tool_batch(state.get("messages", []))
-        if ai_msg is None:
-            return {}
-
-        running_error = state.get("last_error")
-        running_category = state.get("last_error_category")
-        retries = state.get("sql_retry_count", 0)
-        saw_sql = False
-
-        # Deterministic order: the order of the originating tool calls, SQL calls only.
-        for tc in ai_msg.tool_calls:
-            if tc.get("name") != SQL_TOOL_NAME:
-                continue
-            saw_sql = True
-
-            msg = tool_msgs.get(tc.get("id"))
-            # A missing or mismatched ToolMessage is never treated as success.
-            result = _parse_tool_content(msg) if msg is not None and msg.name in (None, SQL_TOOL_NAME) else None
-            outcome = classify_sql_result(result)
-
-            # A SQL execution that happens while an earlier failure is outstanding is a retry.
-            if running_error is not None:
-                retries += 1
-
-            if outcome["status"] == "success":
-                running_error, running_category = None, None
-                continue
-
-            running_error = f"{outcome['error_type']}: {outcome['error_message']}"[:_MAX_ERROR_CHARS]
-            running_category = outcome["category"]
-            if not outcome["retryable"]:
-                break  # fail closed: first non-retryable failure decides; later results can't mask it
-
-        if not saw_sql:
-            return {}
-        return {
-            "last_error": running_error,
-            "last_error_category": running_category,
-            "sql_retry_count": retries,
-        }
 
     # 3. Recovery Stop Node: explain why the workflow terminated (SQL failure / retry budget)
     def recovery_stop_node(state: AgentState) -> Dict[str, Any]:
