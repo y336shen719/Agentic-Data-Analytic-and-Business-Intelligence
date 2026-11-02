@@ -581,9 +581,9 @@ def test_streamlit_app_startup_with_apptest(monkeypatch):
     at.run()
 
     assert not at.exception
-    # Check title and info message
-    assert len(at.title) >= 1
-    assert at.title[0].value == "Data Analytics & Business Intelligence Agent"
+    # Check header and sidebar branding (redundant main title removed)
+    assert at.header[0].value == "Dataset Explorer"
+    assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
     # Check sidebar
     assert len(at.sidebar.button) >= 5  # Example questions + clear button + logout
 

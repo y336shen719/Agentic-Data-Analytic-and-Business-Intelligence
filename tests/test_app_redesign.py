@@ -103,9 +103,9 @@ def test_correct_password_authenticates_and_unlocks(monkeypatch):
 
     assert not at.exception
     assert at.session_state.get("authenticated") is True
-    # Now full app is unlocked
-    assert len(at.title) >= 1
-    assert at.title[0].value == "Data Analytics & Business Intelligence Agent"
+    # Now full app is unlocked with Dataset Explorer as first header
+    assert at.header[0].value == "Dataset Explorer"
+    assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
     assert len(at.sidebar.button) >= 5
 
 
@@ -291,9 +291,11 @@ def test_clean_branding_no_decorative_emojis(monkeypatch):
     at.session_state["authenticated"] = True
     at.run()
 
-    # Title has no emojis
-    assert "📊" not in at.title[0].value
-    assert at.title[0].value == "Data Analytics & Business Intelligence Agent"
+    # Redundant main title removed; main area has 0 titles
+    assert len(at.main.title) == 0
+    assert at.header[0].value == "Dataset Explorer"
+    assert "📊" not in at.sidebar.title[0].value
+    assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
 
     # Sidebar headers have no emojis
     for h in at.sidebar.header:
@@ -379,4 +381,23 @@ def test_scrollable_conversation_container(monkeypatch):
     assert len(at.chat_message) == 2
     assert "Test user query" in at.chat_message[0].markdown[0].value
     assert "Test assistant response" in at.chat_message[1].markdown[0].value
+
+
+def test_main_area_starts_with_dataset_explorer_without_redundant_title(monkeypatch):
+    """Verify redundant main title is removed and Dataset Explorer is the first main element."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "secret123")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server-test-key")
+    at = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    at.session_state["authenticated"] = True
+    at.run()
+
+    # Redundant main title is gone
+    assert len(at.main.title) == 0
+    # First header is Dataset Explorer
+    assert len(at.header) >= 2
+    assert at.header[0].value == "Dataset Explorer"
+    assert at.header[1].value == "Conversation History"
+    # Sidebar branding preserved
+    assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
+
 

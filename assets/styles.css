@@ -75,6 +75,12 @@ h1, h2, h3, h4, h5, h6 {
   outline-offset: 1px !important;
 }
 
+/* Reduce excessive top padding on main content area for clean SaaS layout */
+.block-container {
+  padding-top: 1.75rem !important;
+  padding-bottom: 2rem !important;
+}
+
 /* ==============================================================================
    2. Sidebar SaaS Layout
    ============================================================================== */

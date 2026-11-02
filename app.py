@@ -234,14 +234,8 @@ if has_diagnostic_password_configured():
 
 
 # ==============================================================================
-# 4. Main Area Header and Pre-flight Checks
+# 4. Pre-flight Checks and Session Initialization
 # ==============================================================================
-
-st.title("Data Analytics & Business Intelligence Agent")
-st.caption(
-    "Autonomous Business Intelligence: natural-language SQL, Python statistical analysis, "
-    "and interactive Plotly visualization."
-)
 
 # Database existence check
 db_file = Path(DEFAULT_DB_PATH)
