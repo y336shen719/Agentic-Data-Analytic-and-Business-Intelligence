@@ -36,3 +36,6 @@ outputs/
 
 # Operating system files
 .DS_Store
+
+# Evaluation results and artifacts
+evaluation/results/

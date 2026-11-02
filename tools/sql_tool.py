@@ -20,6 +20,7 @@ import pickle
 import re
 import selectors
 import struct
+import sys
 import time
 from typing import Any, Collection, Dict, Generator, List, Optional, Set, Tuple, Union
 import uuid
@@ -74,11 +75,15 @@ _ALLOWED_FUNC_NAMES: frozenset[str] = frozenset({
     # Aggregates & Stats
     "Count", "Sum", "Avg", "Min", "Max", "GroupConcat", "ArrayAgg",
     "Stddev", "StddevPop", "StddevSamp", "Variance", "VariancePop",
+    "Corr", "CovarPop", "CovarSamp", "PercentileCont", "PercentileDisc",
+    "Median", "ApproxDistinct",
     # Window
     "RowNumber", "Rank", "DenseRank", "Lag", "Lead", "FirstValue",
     "LastValue", "Ntile", "CumeDist", "PercentRank",
     # Conditional, Case & Type
     "Case", "If", "Coalesce", "Nullif", "Cast", "TryCast", "Collate",
+    # Logical Connectors (SQLGlot treats Binary connectors as Func instances)
+    "And", "Or", "Xor",
     # Anonymous functions (validated by name against _ALLOWED_ANONYMOUS_FUNCTIONS)
     "Anonymous",
 })
@@ -727,6 +732,22 @@ _PROCESS_FACTORY = multiprocessing.get_context("spawn").Process
 _WORKER_TARGET = _worker_query_runner
 
 
+def _resolve_worker_target() -> Any:
+    """Resolve the worker runner function to survive module reloads under spawn multiprocessing.
+
+    When Streamlit reloads modules, functions stored in earlier imports may not compare equal
+    to the newly reloaded module's symbol in sys.modules, causing PicklingError under spawn mode.
+    If _WORKER_TARGET has been overridden (e.g., in unit tests), return it directly.
+    Otherwise, resolve _worker_query_runner from the currently active tools.sql_tool module.
+    """
+    if _WORKER_TARGET is not _worker_query_runner:
+        return _WORKER_TARGET
+    current_module = sys.modules.get("tools.sql_tool")
+    if current_module is not None:
+        return getattr(current_module, "_worker_query_runner", _worker_query_runner)
+    return _worker_query_runner
+
+
 # ==============================================================================
 # Safe SQL Execution Interface
 # ==============================================================================
@@ -879,7 +900,7 @@ def execute_sql(
     worker = None
     try:
         worker = _PROCESS_FACTORY(
-            target=_WORKER_TARGET,
+            target=_resolve_worker_target(),
             args=(str(resolved_path), query, max_rows, child_conn),
         )
         worker.start()

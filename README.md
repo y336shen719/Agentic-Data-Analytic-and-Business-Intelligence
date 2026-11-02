@@ -4,40 +4,34 @@
 to explore how a stateful AI agent could answer natural-language questions
 about e-commerce business data.
 
-> **Status: Under development.** This repository currently contains project
-> scaffolding and a minimal Streamlit landing page. The agent, SQL tools,
-> analytics, charts, data pipeline, and evaluation workflow are planned and
-> are not yet implemented.
+> **Status: Functional.** This repository contains an autonomous Business Intelligence
+> agent built on LangGraph, DuckDB, and Plotly, with a full Streamlit chat interface.
+> The agent executes validated, read-only SQL, bounded Python statistical analysis,
+> and interactive Plotly chart generation.
 
 ## Business problem and objective
 
 E-commerce teams often need to investigate business performance across
-multiple datasets and turn questions into useful analysis. This project aims
-to build a stateful, single-agent system that can break down those questions,
-select appropriate tools, inspect results, and provide a grounded report.
-The eventual system is intended to support multi-step analysis while keeping
-data access and execution constrained.
+multiple datasets and turn questions into useful analysis. This project implements
+a stateful, single-agent system that breaks down questions, selects appropriate
+tools, inspects results, and provides a grounded report.
+The system supports multi-step, multi-turn analysis while keeping data access and
+execution strictly bounded.
 
 ## Dataset
 
-The planned data source is the [Olist Brazilian E-Commerce Public
+The data source is the [Olist Brazilian E-Commerce Public
 Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce). The
-dataset has not been downloaded or loaded into this repository. Its future
-DuckDB schema will be documented in [data/schema.md](data/schema.md) after
-the data preparation workflow is implemented and verified.
+ingested DuckDB schema is documented in [data/schema.md](data/schema.md).
 
-## Planned architecture
+## Architecture
 
-The planned architecture is a **stateful single agent with multiple tools**:
-Streamlit accepts a user request, LangGraph orchestrates an agent loop, and
-the LLM may select from constrained SQL, Python analysis, and chart tools.
-Tool results and errors are recorded in agent state so the agent can continue
-or return a grounded final report. The design is documented in
-[docs/architecture.md](docs/architecture.md).
-
-This architecture is a plan, not a description of currently working agent
-behavior. No LLM is called and no LangGraph graph is initialized by the
-current application.
+The architecture is a **stateful single agent with multiple tools**:
+Streamlit accepts user requests, LangGraph orchestrates an agent loop, and
+the LLM selects from constrained SQL, Python analysis, and chart tools.
+Tool results and errors are recorded in agent state so the agent can recover
+from errors or return a grounded final report with interactive Plotly figures.
+The design is documented in [docs/architecture.md](docs/architecture.md).
 
 ## Technology stack
 
@@ -93,39 +87,63 @@ automatically by this project setup.
 
 ## Run the Streamlit application
 
-After installing dependencies, run:
+After installing dependencies and configuring `.env` (or having an OpenAI API key ready), run:
 
 ```bash
 streamlit run app.py
 ```
 
-The current landing page does not require credentials, connect to an LLM, or
-provide chat functionality.
+The application provides:
+- Natural-language business intelligence queries against the Olist e-commerce database.
+- Interactive Plotly charts rendered from session-scoped chart specifications.
+- Expandable tool execution audit steps (SQL query, rows returned, Python analysis).
+- Multi-turn conversation persistence and a sidebar button to clear the conversation.
 
 ## Environment variables
 
-Copy the example file if you want a local template for future integrations:
+Copy the example file and configure your credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-Set credentials only in the local `.env` file or another secure secrets
-manager. Never commit real credentials. The current landing page does not load
-or use these variables; API keys are not required to run it.
+Configure `OPENAI_API_KEY` in `.env` or input it directly in the Streamlit sidebar. Never commit credentials to source control.
 
-## Planned development milestones
+## LangSmith Observability & Tracing (Step 8.5.1)
 
-1. Define and validate a reproducible Olist data preparation workflow.
-2. Load prepared data into DuckDB and document its verified schema.
-3. Implement and unit-test constrained, read-only SQL access.
-4. Add statistical analysis and chart tools with validated inputs.
-5. Define agent state, prompts, and bounded LangGraph orchestration.
-6. Connect the Streamlit interface to the agent and add robust error handling.
-7. Add evaluation cases and measured evaluation reporting.
-8. Add optional LangSmith tracing and document operational safeguards.
+LangSmith tracing is fully supported and **strictly opt-in**. Tracing provides complete visibility into:
+- LangGraph agent graph executions and node transitions (`llm_node`, `tools`).
+- Tool calls (`execute_sql`, `execute_python_analysis`, `generate_chart`, `get_database_schema`).
+- Execution duration, token usage, tool input parameters, and error recovery events.
+- Multi-turn conversation association via safe session metadata.
 
-These are planned milestones; they are not claims of implemented functionality.
+### Configuration
+
+Add the following to your `.env` file:
+
+```dotenv
+# Opt-in flag: set to true to enable LangSmith tracing (default: false)
+LANGSMITH_TRACING=true
+
+# Your LangSmith API key (from https://smith.langchain.com)
+LANGSMITH_API_KEY=lsv2_pt_...
+
+# Target project name (default: agentic-data-analyst)
+LANGSMITH_PROJECT=agentic-data-analyst
+```
+
+### Privacy & Data Protection Safeguards
+- **Sensitive Key Redaction**: API keys, credentials, tokens, and password fields in metadata are automatically redacted (`[REDACTED]`) before trace transmission.
+- **Compact Tool Payloads**: The agent only passes lightweight previews (up to 5 rows) and chart IDs in tool messages. Full DuckDB tables and large Plotly figure JSON structures are preserved in session memory and are **never** uploaded to LangSmith traces.
+- **Graceful Deactivation**: If `LANGSMITH_TRACING=true` but no API key is configured, tracing gracefully disables with a warning without breaking agent execution.
+
+### Verification Smoke Test
+
+To verify tracing against a live scenario without full benchmark cost:
+```bash
+python -m dotenv run -- python -m evaluation.evaluate --live --scenario VIZ_01_MONTHLY_REVENUE_LINE
+```
+View the resulting runs in the [LangSmith Dashboard](https://smith.langchain.com/) under the configured project.
 
 ## Security considerations
 

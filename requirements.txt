@@ -2,6 +2,7 @@ streamlit
 langgraph
 langchain-core
 langchain-openai
+langsmith
 duckdb
 pandas
 numpy

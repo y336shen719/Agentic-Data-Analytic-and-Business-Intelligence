@@ -50,6 +50,7 @@ RESOURCE_ERROR_TYPES = frozenset(
         "IOException",
         "FileNotFoundError",
         "ValueError",
+        "PicklingError",
     }
 )
 

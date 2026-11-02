@@ -269,6 +269,90 @@ def _validate_bool_param(params: Dict[str, Any], param_name: str, default: bool)
     return val
 
 
+def _match_column(df: pd.DataFrame, col_name: Optional[str]) -> Optional[str]:
+    """Resolve requested column name against dataframe columns with safe case and alias tolerance."""
+    if not col_name or not isinstance(col_name, str):
+        return None
+    cleaned = col_name.strip()
+    if cleaned in df.columns:
+        return cleaned
+
+    # 1. Exact case-insensitive match
+    lower_map = {c.lower(): c for c in df.columns}
+    if cleaned.lower() in lower_map:
+        return lower_map[cleaned.lower()]
+
+    # 2. Normalized match (ignoring whitespace and underscores)
+    def norm(s: str) -> str:
+        return re.sub(r"[_\s]+", "", s).lower()
+
+    norm_map = {norm(c): c for c in df.columns}
+    if norm(cleaned) in norm_map:
+        return norm_map[norm(cleaned)]
+
+    # 3. Safe substring alias match (e.g. 'category' -> 'product_category_name', 'revenue' -> 'total_revenue')
+    candidates = []
+    c_low = cleaned.lower()
+    for col in df.columns:
+        if c_low in col.lower() or col.lower() in c_low:
+            candidates.append(col)
+    if len(candidates) == 1:
+        return candidates[0]
+
+    return None
+
+
+def _resolve_bar_columns(
+    df: pd.DataFrame,
+    x_column: Optional[str],
+    y_column: Optional[str],
+    orientation: str = "v",
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve categorical and numerical columns for bar chart with alias and 2-column fallback."""
+    matched_x = _match_column(df, x_column)
+    matched_y = _match_column(df, y_column)
+
+    # 1. High-confidence fallback for 2-column datasets (very common in follow-up charting)
+    if len(df.columns) == 2:
+        col_a, col_b = df.columns[0], df.columns[1]
+
+        def is_numeric_candidate(col: str) -> bool:
+            try:
+                _coerce_numeric_series(df[col], col)
+                return True
+            except Exception:
+                return False
+
+        a_num = is_numeric_candidate(col_a)
+        b_num = is_numeric_candidate(col_b)
+
+        if a_num and not b_num:
+            cat_col, num_col = col_b, col_a
+        elif b_num and not a_num:
+            cat_col, num_col = col_a, col_b
+        else:
+            cat_col, num_col = col_a, col_b
+
+        # Check if both matched but were swapped relative to orientation
+        if matched_x and matched_y:
+            if orientation == "v" and matched_x == num_col and matched_y == cat_col:
+                return cat_col, num_col
+            elif orientation == "h" and matched_x == cat_col and matched_y == num_col:
+                return num_col, cat_col
+            return matched_x, matched_y
+
+        # If only one or none matched, fallback to natural assignment based on orientation
+        if orientation == "v":
+            return cat_col, num_col
+        else:
+            return num_col, cat_col
+
+    # For datasets with != 2 columns
+    final_x = matched_x or x_column
+    final_y = matched_y or y_column
+    return final_x, final_y
+
+
 def _validate_str_param(
     params: Dict[str, Any], param_name: str, allowed: Optional[Sequence[str]] = None
 ) -> Optional[str]:
@@ -658,30 +742,34 @@ class ChartGenerationEngine:
 
         work_df = df.copy()
 
+        resolved_x, resolved_y = _resolve_bar_columns(work_df, x_column, y_column, orientation=orientation)
+        eff_x = resolved_x if resolved_x is not None else x_column
+        eff_y = resolved_y if resolved_y is not None else y_column
+
         if orientation == "v":
-            if not x_column or not str(x_column).strip():
+            if not eff_x or not str(eff_x).strip():
                 raise InvalidParameterError("x_column is required for vertical bar chart.")
-            if not y_column or not str(y_column).strip():
+            if not eff_y or not str(eff_y).strip():
                 raise InvalidParameterError("y_column is required for vertical bar chart.")
-            if x_column not in work_df.columns:
-                raise InvalidColumnError(f"x_column '{x_column}' does not exist in dataset.")
-            if y_column not in work_df.columns:
-                raise InvalidColumnError(f"y_column '{y_column}' does not exist in dataset.")
+            if eff_x not in work_df.columns:
+                raise InvalidColumnError(f"x_column '{eff_x}' does not exist in dataset.")
+            if eff_y not in work_df.columns:
+                raise InvalidColumnError(f"y_column '{eff_y}' does not exist in dataset.")
 
-            work_df[y_column] = _coerce_numeric_series(work_df[y_column], y_column)
-            cat_col, num_col = x_column, y_column
+            work_df[eff_y] = _coerce_numeric_series(work_df[eff_y], eff_y)
+            cat_col, num_col = eff_x, eff_y
         else:
-            if not x_column or not str(x_column).strip():
+            if not eff_x or not str(eff_x).strip():
                 raise InvalidParameterError("x_column (numeric measure) is required for horizontal bar chart.")
-            if not y_column or not str(y_column).strip():
+            if not eff_y or not str(eff_y).strip():
                 raise InvalidParameterError("y_column (category) is required for horizontal bar chart.")
-            if x_column not in work_df.columns:
-                raise InvalidColumnError(f"x_column '{x_column}' does not exist in dataset.")
-            if y_column not in work_df.columns:
-                raise InvalidColumnError(f"y_column '{y_column}' does not exist in dataset.")
+            if eff_x not in work_df.columns:
+                raise InvalidColumnError(f"x_column '{eff_x}' does not exist in dataset.")
+            if eff_y not in work_df.columns:
+                raise InvalidColumnError(f"y_column '{eff_y}' does not exist in dataset.")
 
-            work_df[x_column] = _coerce_numeric_series(work_df[x_column], x_column)
-            cat_col, num_col = y_column, x_column
+            work_df[eff_x] = _coerce_numeric_series(work_df[eff_x], eff_x)
+            cat_col, num_col = eff_y, eff_x
 
         # Missing value filtering: drop rows where cat_col or num_col is missing
         total_rows = len(df)
@@ -729,14 +817,14 @@ class ChartGenerationEngine:
         y_label = _validate_str_param(params, "y_label")
         labels = {}
         if x_label:
-            labels[x_column] = x_label
+            labels[eff_x] = x_label
         if y_label:
-            labels[y_column] = y_label
+            labels[eff_y] = y_label
 
         fig = px.bar(
             work_df,
-            x=x_column,
-            y=y_column,
+            x=eff_x,
+            y=eff_y,
             color=color_column,
             orientation=orientation,
             title=title,
@@ -744,8 +832,8 @@ class ChartGenerationEngine:
         )
 
         metadata = {
-            "x_column": x_column,
-            "y_column": y_column,
+            "x_column": eff_x,
+            "y_column": eff_y,
             "orientation": orientation,
             "rows_used": rows_used,
             "total_rows": total_rows,
@@ -767,27 +855,39 @@ class ChartGenerationEngine:
         y_column: Optional[str],
         params: Dict[str, Any],
     ) -> Tuple[go.Figure, Dict[str, Any]]:
-        if not x_column or not str(x_column).strip():
+        work_df = df.copy()
+
+        matched_x = _match_column(work_df, x_column)
+        matched_y = _match_column(work_df, y_column)
+
+        if len(work_df.columns) == 2 and (not matched_x or not matched_y):
+            col_a, col_b = work_df.columns[0], work_df.columns[1]
+            eff_x = matched_x or col_a
+            eff_y = matched_y or col_b
+        else:
+            eff_x = matched_x or x_column
+            eff_y = matched_y or y_column
+
+        if not eff_x or not str(eff_x).strip():
             raise InvalidParameterError("x_column is required for line chart.")
-        if not y_column or not str(y_column).strip():
+        if not eff_y or not str(eff_y).strip():
             raise InvalidParameterError("y_column is required for line chart.")
-        if x_column not in df.columns:
-            raise InvalidColumnError(f"x_column '{x_column}' does not exist in dataset.")
-        if y_column not in df.columns:
-            raise InvalidColumnError(f"y_column '{y_column}' does not exist in dataset.")
+        if eff_x not in work_df.columns:
+            raise InvalidColumnError(f"x_column '{eff_x}' does not exist in dataset.")
+        if eff_y not in work_df.columns:
+            raise InvalidColumnError(f"y_column '{eff_y}' does not exist in dataset.")
 
         color_column = _validate_str_param(params, "color_column")
-        if color_column is not None and color_column not in df.columns:
+        if color_column is not None and color_column not in work_df.columns:
             raise InvalidColumnError(f"color_column '{color_column}' does not exist in dataset.")
 
         sort_x = _validate_bool_param(params, "sort_x", True)
         markers = _validate_bool_param(params, "markers", True)
 
-        work_df = df.copy()
-        work_df[y_column] = _coerce_numeric_series(work_df[y_column], y_column)
+        work_df[eff_y] = _coerce_numeric_series(work_df[eff_y], eff_y)
 
         total_rows = len(df)
-        valid_mask = work_df[x_column].notna() & work_df[y_column].notna()
+        valid_mask = work_df[eff_x].notna() & work_df[eff_y].notna()
         work_df = work_df[valid_mask]
         rows_used = len(work_df)
         excluded_rows = total_rows - rows_used
@@ -805,28 +905,28 @@ class ChartGenerationEngine:
 
         if sort_x:
             try:
-                dt_series = pd.to_datetime(work_df[x_column], errors="coerce")
+                dt_series = pd.to_datetime(work_df[eff_x], errors="coerce")
                 if dt_series.notna().sum() == len(work_df):
                     work_df["_sort_key"] = dt_series
                     work_df = work_df.sort_values(by="_sort_key").drop(columns=["_sort_key"])
                 else:
-                    work_df = work_df.sort_values(by=x_column)
+                    work_df = work_df.sort_values(by=eff_x)
             except Exception:
-                work_df = work_df.sort_values(by=x_column)
+                work_df = work_df.sort_values(by=eff_x)
 
-        title = params.get("title") or f"{y_column} over {x_column}"
+        title = params.get("title") or f"{eff_y} over {eff_x}"
         x_label = _validate_str_param(params, "x_label")
         y_label = _validate_str_param(params, "y_label")
         labels = {}
         if x_label:
-            labels[x_column] = x_label
+            labels[eff_x] = x_label
         if y_label:
-            labels[y_column] = y_label
+            labels[eff_y] = y_label
 
         fig = px.line(
             work_df,
-            x=x_column,
-            y=y_column,
+            x=eff_x,
+            y=eff_y,
             color=color_column,
             markers=markers,
             title=title,
@@ -834,8 +934,8 @@ class ChartGenerationEngine:
         )
 
         metadata = {
-            "x_column": x_column,
-            "y_column": y_column,
+            "x_column": eff_x,
+            "y_column": eff_y,
             "rows_used": rows_used,
             "total_rows": total_rows,
             "excluded_rows": excluded_rows,

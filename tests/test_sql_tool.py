@@ -1662,3 +1662,99 @@ def test_worker_sends_success_then_crashes(tmp_path: Path, monkeypatch: pytest.M
     assert res["error_type"] == "ProcessError"
     assert "99" in res["error_message"]
 
+
+# ------------------------------------------------------------------------------
+# 4. DuckDB CORR() Function Allowlist and Analytical Safety Tests
+# ------------------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_corr_aggregate_function_ast_validation() -> None:
+    """CORR function in various syntactic representations is permitted by validate_sql."""
+    # Standard uppercase
+    validate_sql("SELECT CORR(price, freight_value) FROM order_items")
+    # Lowercase
+    validate_sql("SELECT corr(price, freight_value) AS r FROM order_items")
+    # With WHERE filter
+    validate_sql("SELECT corr(price, freight_value) FROM order_items WHERE price > 0 AND freight_value > 0")
+    # Covariance companion functions
+    validate_sql("SELECT covar_pop(price, freight_value), covar_samp(price, freight_value) FROM order_items")
+
+
+@pytest.mark.unit
+def test_corr_execution_numeric_accuracy_and_null_handling(tmp_path: Path) -> None:
+    """DuckDB execute_sql returns mathematically accurate correlation results with proper NULL handling."""
+    db_file = _make_db(tmp_path, "corr_test.duckdb")
+    with duckdb.connect(str(db_file)) as con:
+        con.execute("""
+            CREATE TABLE order_items AS
+            SELECT 10.0 AS price, 2.0 AS freight_value UNION ALL
+            SELECT 20.0 AS price, 4.0 AS freight_value UNION ALL
+            SELECT 30.0 AS price, 6.0 AS freight_value UNION ALL
+            SELECT 40.0 AS price, 8.0 AS freight_value UNION ALL
+            SELECT 50.0 AS price, NULL AS freight_value UNION ALL  -- NULL row should be ignored
+            SELECT NULL AS price, 10.0 AS freight_value            -- NULL row should be ignored
+        """)
+
+    # 1. Perfect positive correlation (r = 1.0)
+    query = "SELECT corr(price, freight_value) AS correlation FROM order_items"
+    res = execute_sql(query, db_path=db_file, allowed_tables=["order_items"])
+    assert res["status"] == "success"
+    assert len(res["rows"]) == 1
+    corr_val = float(res["rows"][0][0])
+    assert abs(corr_val - 1.0) < 1e-5
+
+    # 2. Perfect negative correlation (r = -1.0)
+    with duckdb.connect(str(db_file)) as con:
+        con.execute("""
+            CREATE TABLE neg_items AS
+            SELECT 10.0 AS price, 40.0 AS freight_value UNION ALL
+            SELECT 20.0 AS price, 30.0 AS freight_value UNION ALL
+            SELECT 30.0 AS price, 20.0 AS freight_value UNION ALL
+            SELECT 40.0 AS price, 10.0 AS freight_value
+        """)
+    neg_res = execute_sql("SELECT corr(price, freight_value) FROM neg_items", db_path=db_file, allowed_tables=["neg_items"])
+    assert neg_res["status"] == "success"
+    assert abs(float(neg_res["rows"][0][0]) - (-1.0)) < 1e-5
+
+    # 3. Degenerate input: constant price (zero variance) yields NaN/NULL in DuckDB
+    with duckdb.connect(str(db_file)) as con:
+        con.execute("""
+            CREATE TABLE degen_items AS
+            SELECT 10.0 AS price, 2.0 AS freight_value UNION ALL
+            SELECT 10.0 AS price, 4.0 AS freight_value
+        """)
+    degen_res = execute_sql("SELECT corr(price, freight_value) FROM degen_items", db_path=db_file, allowed_tables=["degen_items"])
+    assert degen_res["status"] == "success"
+    assert degen_res["rows"][0][0] in (None, "NaN")
+
+    # 4. Insufficient rows (< 2 pairs) yields NaN/NULL
+    with duckdb.connect(str(db_file)) as con:
+        con.execute("CREATE TABLE single_item AS SELECT 10.0 AS price, 2.0 AS freight_value")
+    single_res = execute_sql("SELECT corr(price, freight_value) FROM single_item", db_path=db_file, allowed_tables=["single_item"])
+    assert single_res["status"] == "success"
+    assert single_res["rows"][0][0] in (None, "NaN")
+
+
+@pytest.mark.unit
+def test_corr_preserves_safety_and_prohibits_unsafe_functions() -> None:
+    """Allowing CORR does NOT open holes for arbitrary or unsafe functions."""
+    # Unsafe / prohibited functions remain rejected
+    with pytest.raises(SQLValidationError) as exc1:
+        validate_sql("SELECT read_csv('data.csv') FROM order_items")
+    assert "not" in str(exc1.value).lower()
+
+    with pytest.raises(SQLValidationError) as exc2:
+        validate_sql("SELECT system('id') FROM order_items")
+    assert "not in the allowed" in str(exc2.value)
+
+    with pytest.raises(SQLValidationError) as exc3:
+        validate_sql("SELECT version() FROM order_items")
+    assert "not" in str(exc3.value).lower()
+
+    # Disallowed statements remain rejected
+    with pytest.raises(SQLValidationError):
+        validate_sql("DROP TABLE order_items")
+    with pytest.raises(SQLValidationError):
+        validate_sql("ATTACH 'evil.db'")
+
+
