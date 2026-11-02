@@ -122,6 +122,7 @@ def sync_secrets_to_environment() -> None:
             "LANGCHAIN_WORKSPACE_ID",
             "DIAGNOSTIC_PASSWORD",
             "ADMIN_PASSWORD",
+            "APP_ACCESS_PASSWORD",
         ]
         for k in keys_to_sync:
             if k in st.secrets:

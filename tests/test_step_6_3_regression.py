@@ -56,7 +56,7 @@ def _extract_trace_values(val: Any) -> list:
 # Regression Test A: SQL -> Chart -> Streamlit
 # ==============================================================================
 
-def test_regression_sql_to_chart_to_streamlit(tmp_path: Path):
+def test_regression_sql_to_chart_to_streamlit(tmp_path: Path, monkeypatch):
     """Test A: Verify SQL execution -> Chart registration -> UI extraction -> Streamlit rendering.
     
     Verifies:
@@ -124,10 +124,12 @@ def test_regression_sql_to_chart_to_streamlit(tmp_path: Path):
     assert "The monthly revenue trend" in assistant_text
 
     # 4. Streamlit rendering via AppTest
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-pass")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-apptest")
     app_path = Path(__file__).parent.parent / "app.py"
     at = AppTest.from_file(str(app_path), default_timeout=10)
+    at.session_state["authenticated"] = True
     at.run()
-    at.sidebar.text_input[0].set_value("sk-mock-apptest").run()
 
     st_session = at.session_state["agent_session"]
     st_session.chart_registry = session.chart_registry
@@ -361,12 +363,14 @@ def test_regression_review_score_distribution(tmp_path: Path):
 # Regression Test F: Clean UI Default
 # ==============================================================================
 
-def test_regression_clean_ui_default_and_debug_toggle():
+def test_regression_clean_ui_default_and_debug_toggle(monkeypatch):
     """Test F: Verify default UI does not expose internal IDs or technical diagnostics."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-pass")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-apptest")
     app_path = Path(__file__).parent.parent / "app.py"
     at = AppTest.from_file(str(app_path), default_timeout=10)
+    at.session_state["authenticated"] = True
     at.run()
-    at.sidebar.text_input[0].set_value("sk-mock-apptest").run()
 
     st_session = at.session_state["agent_session"]
     cid = st_session.chart_registry.save(
@@ -396,8 +400,9 @@ def test_regression_clean_ui_default_and_debug_toggle():
     # 1. Default render (show_debug=False)
     at.run()
     assert not at.exception
-    # There should be no expander rendered in the chat message
-    assert len(at.expander) == 0
+    # There should be no Tool Executions expander rendered in the chat message
+    tool_expanders = [e for e in at.expander if "Tool Executions" in e.label]
+    assert len(tool_expanders) == 0
 
     # Narrative contains business text and no internal IDs
     rendered_text = " ".join([m.value for m in at.chat_message[1].markdown])
@@ -408,8 +413,9 @@ def test_regression_clean_ui_default_and_debug_toggle():
     # 2. Toggle show_debug = True in developer settings
     at.sidebar.checkbox[0].set_value(True).run()
     assert not at.exception
-    assert len(at.expander) == 1
-    assert "Tool Executions" in at.expander[0].label
+    active_tool_expanders = [e for e in at.expander if "Tool Executions" in e.label]
+    assert len(active_tool_expanders) == 1
+    assert "Tool Executions" in active_tool_expanders[0].label
 
 
 # ==============================================================================

@@ -1,20 +1,23 @@
-"""Streamlit web application for the Agentic Data Analyst.
+"""Streamlit web application for Data Analytics & Business Intelligence Agent.
 
-Provides a natural-language business intelligence chat interface powered by a stateful
+Provides a natural-language business intelligence interface powered by a stateful
 LangGraph agent querying the Olist Brazilian E-Commerce DuckDB database, executing
 Python statistical analyses, and rendering interactive Plotly charts.
 """
 
 from __future__ import annotations
 
+import hmac
+import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import plotly.graph_objects as go
 import streamlit as st
 
 from agent.config import DEFAULT_OPENAI_MODEL
 from agent.tracing import (
+    _has_streamlit_context,
     has_diagnostic_password_configured,
     run_synthetic_trace_diagnostic,
     setup_langsmith_environment,
@@ -29,11 +32,36 @@ from agent.ui_session import (
 )
 from data.prepare_data import DEFAULT_DB_PATH
 from tools.chart_registry import ChartNotFoundError, ChartRegistry
+from tools.sql_tool import get_database_schema
 
-# 1. Page Configuration
+# ==============================================================================
+# Descriptive Metadata for Base Tables and Views
+# ==============================================================================
+
+BASE_TABLE_DESCRIPTIONS: Dict[str, str] = {
+    "customers": "Customer account records and shipping location details.",
+    "orders": "Core order transaction records, fulfillment timestamps, and delivery statuses.",
+    "order_items": "Line items per order, specifying product, seller, price, and freight value.",
+    "order_payments": "Payment transactions, payment methods, installments, and payment values.",
+    "order_reviews": "Customer post-delivery review ratings (1-5) and survey text comments.",
+    "products": "Product catalog dimensions, weights, and category classifications.",
+    "sellers": "Seller account records and merchant geographic locations.",
+    "geolocation": "Brazilian postal zip code coordinates (latitude, longitude) and city/state mappings.",
+    "category_translation": "Portuguese to English translations for product category names.",
+}
+
+VIEW_DESCRIPTIONS: Dict[str, str] = {
+    "order_summary": "Pre-aggregated order-level analytical view with revenue, item counts, payment totals, and review scores.",
+    "category_sales_summary": "Monthly category-level sales, item volumes, gross revenue, and active seller metrics.",
+}
+
+
+# ==============================================================================
+# 1. Page Configuration & Environment Setup
+# ==============================================================================
+
 st.set_page_config(
-    page_title="Agentic Data Analyst",
-    page_icon="📊",
+    page_title="Data Analytics & Business Intelligence Agent",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -42,40 +70,84 @@ st.set_page_config(
 sync_secrets_to_environment()
 setup_langsmith_environment()
 
-# 2. Sidebar Navigation and Configuration
-st.sidebar.title("📊 Data Analyst Agent")
+
+# ==============================================================================
+# 2. Application Access Gate (Password Protection)
+# ==============================================================================
+
+def get_app_access_password() -> Optional[str]:
+    """Retrieve APP_ACCESS_PASSWORD from Streamlit Secrets or environment."""
+    val: Optional[str] = None
+    if _has_streamlit_context():
+        try:
+            val = st.secrets.get("APP_ACCESS_PASSWORD")
+        except Exception:
+            val = None
+    if not val:
+        val = os.environ.get("APP_ACCESS_PASSWORD")
+    if val:
+        val = str(val).strip()
+    return val or None
+
+
+def check_app_access() -> bool:
+    """Validate application access gate.
+
+    Fails closed if APP_ACCESS_PASSWORD is not configured.
+    Renders login form if unauthenticated.
+    Returns True only when the session is authenticated.
+    """
+    configured_password = get_app_access_password()
+    if not configured_password:
+        st.error(
+            "Application configuration error: Access password is not configured. "
+            "Please configure APP_ACCESS_PASSWORD in Streamlit Secrets or environment variables."
+        )
+        return False
+
+    if st.session_state.get("authenticated", False):
+        return True
+
+    st.subheader("Data Analytics & Business Intelligence Agent")
+    st.caption("Please enter the access password to continue.")
+
+    with st.form("access_gate_form", clear_on_submit=False):
+        entered_password = st.text_input(
+            "Access Password",
+            type="password",
+            placeholder="Enter password",
+            key="app_access_password_input",
+            help="Application access password configured in Streamlit Secrets or environment.",
+        )
+        submitted = st.form_submit_button("Enter", type="primary")
+        if submitted:
+            if entered_password and hmac.compare_digest(
+                entered_password.strip().encode("utf-8"),
+                configured_password.encode("utf-8"),
+            ):
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect password. Please try again.")
+
+    return False
+
+
+if not check_app_access():
+    st.stop()
+
+
+# ==============================================================================
+# 3. Sidebar Navigation and Configuration
+# ==============================================================================
+
+st.sidebar.title("Data Analytics & Business Intelligence Agent")
 st.sidebar.markdown(
     "Autonomous E-Commerce Business Intelligence assistant powered by a "
     "stateful LangGraph agent, DuckDB, and Plotly."
 )
 
-st.sidebar.header("📁 Dataset Information")
-st.sidebar.markdown(
-    """
-    **Olist Brazilian E-Commerce**
-    - **Engine**: DuckDB (Read-Only)
-    - **Orders**: ~99k orders (2016–2018)
-    - **Core Tables**:
-      - `orders` (lifecycle & status)
-      - `order_items` (items & prices)
-      - `customers` (locations & users)
-      - `products` (categories & weights)
-      - `order_payments` (payment methods)
-      - `order_reviews` (ratings & comments)
-      - `sellers` (merchant locations)
-    """
-)
-
-st.sidebar.header("⚙️ Configuration")
-api_key_input = st.sidebar.text_input(
-    "OpenAI API Key (optional)",
-    type="password",
-    placeholder="Using configured credentials if available",
-    help="Set in environment, Streamlit secrets, or enter your key here.",
-)
-actual_user_key = api_key_input.strip() if api_key_input and api_key_input.strip() else None
-resolved_key = resolve_api_key(actual_user_key)
-
+st.sidebar.header("Model Selection")
 model_name = st.sidebar.selectbox(
     "Model",
     options=[DEFAULT_OPENAI_MODEL, "gpt-4o", "gpt-4o-mini", "o3-mini"],
@@ -92,19 +164,25 @@ EXAMPLE_QUESTIONS = [
     "Which Brazilian states have the highest average freight value?",
 ]
 
-st.sidebar.header("💡 Example Questions")
+st.sidebar.header("Example Questions")
 for idx, q_text in enumerate(EXAMPLE_QUESTIONS):
     if st.sidebar.button(q_text, key=f"example_q_{idx}", use_container_width=True):
         st.session_state["pending_prompt"] = q_text
+        st.rerun()
 
 st.sidebar.header("Session Management")
-if st.sidebar.button("🗑️ Clear Conversation", use_container_width=True, type="secondary"):
+if st.sidebar.button("Clear Conversation", use_container_width=True, type="secondary"):
     if "agent_session" in st.session_state and st.session_state["agent_session"]:
         reset_agent_session(st.session_state["agent_session"])
     st.session_state["pending_prompt"] = None
     st.rerun()
 
-st.sidebar.header("🛠️ Developer Settings")
+if st.sidebar.button("Log Out", use_container_width=True):
+    st.session_state["authenticated"] = False
+    st.session_state.pop("pending_prompt", None)
+    st.rerun()
+
+st.sidebar.header("Developer Settings")
 show_debug = st.sidebar.checkbox(
     "Show Technical Tool Executions",
     value=False,
@@ -113,7 +191,7 @@ show_debug = st.sidebar.checkbox(
 
 # Admin Diagnostics (Disabled by default, requires DIAGNOSTIC_PASSWORD in secrets/env)
 if has_diagnostic_password_configured():
-    with st.sidebar.expander("🔒 Admin Diagnostics", expanded=False):
+    with st.sidebar.expander("Admin Diagnostics", expanded=False):
         st.caption("Administrator-only synthetic probe to verify cloud LangSmith tracing.")
         diag_password = st.text_input(
             "Diagnostic Password",
@@ -128,23 +206,27 @@ if has_diagnostic_password_configured():
                 with st.spinner("Executing direct synthetic trace probe..."):
                     diag_result = run_synthetic_trace_diagnostic()
                 if diag_result.get("status") == "success" and diag_result.get("read_back_verified"):
-                    st.success("✅ LangSmith trace successfully created and verified on server!")
+                    st.success("LangSmith trace successfully created and verified on server.")
                     st.json(diag_result)
                 elif diag_result.get("status") == "error":
-                    st.error(f"❌ Diagnostic failed: {diag_result.get('error')}")
+                    st.error(f"Diagnostic failed: {diag_result.get('error')}")
                     st.json(diag_result)
                 else:
-                    st.warning("⚠️ Trace submitted, but read-back could not be verified.")
+                    st.warning("Trace submitted, but read-back could not be verified.")
                     st.json(diag_result)
 
-# 3. Main Header
-st.title("📊 Agentic Data Analyst")
+
+# ==============================================================================
+# 4. Main Area Header and Pre-flight Checks
+# ==============================================================================
+
+st.title("Data Analytics & Business Intelligence Agent")
 st.caption(
     "Autonomous Business Intelligence: natural-language SQL, Python statistical analysis, "
     "and interactive Plotly visualization."
 )
 
-# 4. Check Database Existence
+# Database existence check
 db_file = Path(DEFAULT_DB_PATH)
 if not db_file.exists():
     st.error(
@@ -153,14 +235,15 @@ if not db_file.exists():
     )
     st.stop()
 
-# 5. Check API Key
+# Server-side OpenAI API Key resolution
+resolved_key = resolve_api_key(None)
 if not resolved_key:
     st.warning(
-        "⚠️ **OpenAI API Key Required**: Please provide your OpenAI API key in the sidebar "
-        "or define `OPENAI_API_KEY` in your `.env` file to interact with the agent."
+        "OpenAI API Key is not configured on the server. "
+        "Please configure OPENAI_API_KEY in Streamlit Secrets or the local environment."
     )
 
-# 6. Retrieve or Reconfigure Session
+# Retrieve or initialize stateful agent session
 session = None
 if resolved_key:
     session = get_or_create_session(
@@ -171,13 +254,149 @@ if resolved_key:
     )
 
 
+# ==============================================================================
+# 5. Section B (Upper): Dataset Explorer
+# ==============================================================================
+
+@st.cache_data(show_spinner=False)
+def load_database_schema(db_path: str) -> Dict[str, Any]:
+    """Inspect and return the database schema using DuckDB metadata queries."""
+    return get_database_schema(db_path)
+
+
+st.header("Dataset Explorer")
+st.markdown(
+    """
+    **Dataset Summary: Olist Brazilian E-Commerce**
+    - **Dataset Name**: Olist Brazilian E-Commerce
+    - **Database Engine**: DuckDB
+    - **Access Mode**: Read-only
+    - **Dataset Scale**: Approximately 99,000 orders
+    - **Time Coverage**: September 2016 – October 2018
+    """
+)
+
+schema_error: Optional[str] = None
+base_tables: List[Dict[str, Any]] = []
+analytical_views: List[Dict[str, Any]] = []
+
+try:
+    schema_data = load_database_schema(DEFAULT_DB_PATH)
+    base_tables = schema_data.get("tables", [])
+    analytical_views = schema_data.get("views", [])
+except Exception as exc:
+    schema_error = f"Unable to introspect database schema: {exc}"
+
+if schema_error:
+    st.warning(schema_error)
+else:
+    tab_tables, tab_views = st.tabs(
+        [f"Base Tables ({len(base_tables)})", f"Analytical Views ({len(analytical_views)})"]
+    )
+    with tab_tables:
+        if not base_tables:
+            st.info("No base tables found in database.")
+        for tbl in base_tables:
+            tbl_name = tbl["name"]
+            with st.expander(tbl_name, expanded=False):
+                desc = BASE_TABLE_DESCRIPTIONS.get(tbl_name)
+                if desc:
+                    st.caption(desc)
+                cols = tbl.get("columns", [])
+                if cols:
+                    col_records = []
+                    for c in cols:
+                        nullable_val = c.get("nullable")
+                        nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
+                        rec = {
+                            "Column": c["name"],
+                            "Data Type": c["data_type"],
+                            "Nullable": nullable_str,
+                        }
+                        if "description" in c:
+                            rec["Description"] = c["description"]
+                        col_records.append(rec)
+                    st.dataframe(col_records, width="stretch", hide_index=True)
+                else:
+                    st.caption("No column metadata available.")
+
+    with tab_views:
+        if not analytical_views:
+            st.info("No analytical views found in database.")
+        for vw in analytical_views:
+            vw_name = vw["name"]
+            with st.expander(f"{vw_name} (Analytical View)", expanded=False):
+                purpose = VIEW_DESCRIPTIONS.get(vw_name) or vw.get("purpose")
+                if purpose:
+                    st.caption(f"**Purpose**: {purpose}")
+                if vw.get("grain"):
+                    st.caption(f"**Grain**: {vw['grain']}")
+                if vw.get("warning"):
+                    st.caption(f"**Warning**: {vw['warning']}")
+                cols = vw.get("columns", [])
+                if cols:
+                    col_records = []
+                    for c in cols:
+                        nullable_val = c.get("nullable")
+                        nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
+                        rec = {
+                            "Column": c["name"],
+                            "Data Type": c["data_type"],
+                            "Nullable": nullable_str,
+                        }
+                        if "description" in c:
+                            rec["Description"] = c["description"]
+                        col_records.append(rec)
+                    st.dataframe(col_records, width="stretch", hide_index=True)
+                else:
+                    st.caption("No column metadata available.")
+
+
+# ==============================================================================
+# 6. Section B (Middle): Question Entry
+# ==============================================================================
+
+with st.form("query_form", clear_on_submit=True):
+    col_input, col_submit = st.columns([5, 1])
+    with col_input:
+        query_input = st.text_input(
+            "Question",
+            placeholder="Ask a business analytics question about the dataset...",
+            label_visibility="collapsed",
+            disabled=not bool(resolved_key),
+        )
+    with col_submit:
+        form_submitted = st.form_submit_button(
+            "Submit",
+            type="primary",
+            use_container_width=True,
+            disabled=not bool(resolved_key),
+        )
+
+# Identify question from form submission or sidebar example selection
+active_prompt: Optional[str] = None
+if st.session_state.get("pending_prompt"):
+    active_prompt = st.session_state.pop("pending_prompt")
+elif form_submitted and query_input and query_input.strip():
+    active_prompt = query_input.strip()
+
+if active_prompt and session is not None:
+    with st.spinner("Analyzing data and generating insights..."):
+        execute_session_turn(session, active_prompt)
+    st.rerun()
+
+
+# ==============================================================================
+# 7. Section C (Lower): Conversation History
+# ==============================================================================
+
 def render_assistant_message(
     msg: Dict[str, Any],
     chart_registry: ChartRegistry,
     show_debug: bool = False,
 ) -> None:
     """Render a single assistant message with its narrative, charts, and optional debug steps."""
-    with st.chat_message("assistant", avatar="🤖"):
+    with st.chat_message("assistant"):
         # 1. Render assistant narrative first (result-first UI)
         st.markdown(msg.get("content", ""))
 
@@ -187,17 +406,16 @@ def render_assistant_message(
             try:
                 record = chart_registry.get(cid)
                 fig = go.Figure(record.figure)
-                st.plotly_chart(fig, use_container_width=True, key=f"chart_{cid}")
+                st.plotly_chart(fig, width="stretch", key=f"chart_{cid}")
             except ChartNotFoundError:
                 st.info("The requested visualization is no longer available in this session.")
             except Exception:
-                # Sanitized user-friendly warning without leaking internal exceptions or paths
                 st.warning("Unable to display the interactive chart due to a rendering issue.")
 
         # 3. Render tool execution diagnostics only if developer toggle is enabled
         tool_steps = msg.get("tool_executions", [])
         if show_debug and tool_steps:
-            with st.expander(f"🛠️ Tool Executions ({len(tool_steps)})", expanded=False):
+            with st.expander(f"Tool Executions ({len(tool_steps)})", expanded=False):
                 for step in tool_steps:
                     st.markdown(f"**{step.get('title', 'Tool Execution')}**")
                     details = step.get("details")
@@ -210,7 +428,8 @@ def render_assistant_message(
                     st.divider()
 
 
-# 7. Consolidated Chat History Rendering
+st.header("Conversation History")
+
 if session is not None and session.ui_messages:
     for msg in session.ui_messages:
         role = msg.get("role", "assistant")
@@ -220,33 +439,7 @@ if session is not None and session.ui_messages:
         else:
             render_assistant_message(msg, session.chart_registry, show_debug=show_debug)
 else:
-    # Welcome banner when no messages exist
     st.info(
-        "👋 Welcome! Ask any business question about the Olist e-commerce database, "
-        "or select one of the example questions in the sidebar to get started."
+        "Welcome to the Data Analytics & Business Intelligence Agent. "
+        "Ask a business analytics question above, or select an example question from the sidebar to begin."
     )
-
-# 8. Handle User Input
-prompt: Optional[str] = None
-if "pending_prompt" in st.session_state and st.session_state["pending_prompt"]:
-    prompt = st.session_state.pop("pending_prompt")
-else:
-    chat_disabled = not bool(resolved_key)
-    chat_placeholder = (
-        "Ask a business analytics question..."
-        if resolved_key
-        else "Please configure your OpenAI API Key in the sidebar..."
-    )
-    prompt = st.chat_input(chat_placeholder, disabled=chat_disabled)
-
-if prompt and session is not None:
-    # Display the user message immediately
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # Process via LangGraph with spinner
-    with st.spinner("Analyzing data and generating insights..."):
-        execute_session_turn(session, prompt)
-
-    # Rerun to cleanly render through the consolidated history path
-    st.rerun()

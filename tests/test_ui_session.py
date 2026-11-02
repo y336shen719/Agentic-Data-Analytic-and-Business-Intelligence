@@ -571,29 +571,31 @@ def test_credential_change_reconfigures_session(tmp_path):
     assert s_new.graph is not initial_graph
 
 
-def test_streamlit_app_startup_with_apptest():
+def test_streamlit_app_startup_with_apptest(monkeypatch):
     """Verify app.py initializes cleanly with AppTest without unhandled exceptions."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-pass")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-apptest-key")
     app_path = Path(__file__).parent.parent / "app.py"
     at = AppTest.from_file(str(app_path), default_timeout=10)
+    at.session_state["authenticated"] = True
     at.run()
 
     assert not at.exception
     # Check title and info message
     assert len(at.title) >= 1
-    assert at.title[0].value == "📊 Agentic Data Analyst"
+    assert at.title[0].value == "Data Analytics & Business Intelligence Agent"
     # Check sidebar
-    assert len(at.sidebar.button) >= 5  # Example questions + clear button
+    assert len(at.sidebar.button) >= 5  # Example questions + clear button + logout
 
 
-def test_streamlit_apptest_chat_submission_scenario_b1():
+def test_streamlit_apptest_chat_submission_scenario_b1(monkeypatch):
     """Scenario B1: User submits prompt; verify execution, UI message display, and rerun stability."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-pass")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-apptest-key")
     app_path = Path(__file__).parent.parent / "app.py"
     at = AppTest.from_file(str(app_path), default_timeout=10)
+    at.session_state["authenticated"] = True
     at.run()
-
-    # Provide API key in sidebar to activate session
-    at.sidebar.text_input[0].set_value("sk-mock-apptest-key").run()
-    assert not at.chat_input[0].disabled
 
     # Attach deterministic MockGraph to the session
     session = at.session_state["agent_session"]
@@ -606,9 +608,11 @@ def test_streamlit_apptest_chat_submission_scenario_b1():
 
     session.graph = MockAppGraph()
 
-    # User submits prompt
+    # User submits prompt via query form
     user_prompt = "What are the top product categories by revenue?"
-    at.chat_input[0].set_value(user_prompt).run()
+    at.text_input[0].set_value(user_prompt)
+    submit_btn = [b for b in at.button if b.label == "Submit"][0]
+    submit_btn.click().run()
 
     assert not at.exception
     # Verify messages in UI
@@ -628,12 +632,14 @@ def test_streamlit_apptest_chat_submission_scenario_b1():
     assert not at.exception
 
 
-def test_streamlit_apptest_plotly_chart_association_scenario_b2():
+def test_streamlit_apptest_plotly_chart_association_scenario_b2(monkeypatch):
     """Scenario B2: Verify Plotly chart retrieval, data matching, and association with assistant message."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-pass")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-apptest-key")
     app_path = Path(__file__).parent.parent / "app.py"
     at = AppTest.from_file(str(app_path), default_timeout=10)
+    at.session_state["authenticated"] = True
     at.run()
-    at.sidebar.text_input[0].set_value("sk-mock-apptest-key").run()
 
     session = at.session_state["agent_session"]
     fig_data = {
@@ -674,12 +680,14 @@ def test_streamlit_apptest_plotly_chart_association_scenario_b2():
         assert len(at.chat_message) == 2
 
 
-def test_streamlit_apptest_clear_conversation_scenario_b3():
+def test_streamlit_apptest_clear_conversation_scenario_b3(monkeypatch):
     """Scenario B3: Verify clicking 'Clear Conversation' resets all session stores, histories, and UI."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-pass")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-apptest-key")
     app_path = Path(__file__).parent.parent / "app.py"
     at = AppTest.from_file(str(app_path), default_timeout=10)
+    at.session_state["authenticated"] = True
     at.run()
-    at.sidebar.text_input[0].set_value("sk-mock-apptest-key").run()
 
     session = at.session_state["agent_session"]
     session.dataset_store.save({"status": "success", "columns": ["id"], "rows": [[1]], "row_count": 1})
@@ -708,7 +716,7 @@ def test_streamlit_apptest_clear_conversation_scenario_b3():
 
     # UI chat messages cleared and welcome banner displayed
     assert len(at.chat_message) == 0
-    assert any("Welcome!" in inf.value for inf in at.info)
+    assert any("Welcome" in inf.value for inf in at.info)
 
 
 def test_final_answer_extraction_test_a():
