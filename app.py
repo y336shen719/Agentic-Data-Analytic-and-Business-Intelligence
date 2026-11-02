@@ -14,7 +14,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from agent.config import DEFAULT_OPENAI_MODEL
-from agent.tracing import setup_langsmith_environment
+from agent.tracing import (
+    has_diagnostic_password_configured,
+    run_synthetic_trace_diagnostic,
+    setup_langsmith_environment,
+    sync_secrets_to_environment,
+    verify_diagnostic_access,
+)
 from agent.ui_session import (
     execute_session_turn,
     get_or_create_session,
@@ -32,7 +38,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Synchronize LangSmith tracing environment from os.environ or Streamlit secrets
+# Synchronize Streamlit secrets to process environment in main execution thread
+sync_secrets_to_environment()
 setup_langsmith_environment()
 
 # 2. Sidebar Navigation and Configuration
@@ -103,6 +110,32 @@ show_debug = st.sidebar.checkbox(
     value=False,
     help="Display SQL queries, Python arguments, and tool execution metadata for debugging.",
 )
+
+# Admin Diagnostics (Disabled by default, requires DIAGNOSTIC_PASSWORD in secrets/env)
+if has_diagnostic_password_configured():
+    with st.sidebar.expander("🔒 Admin Diagnostics", expanded=False):
+        st.caption("Administrator-only synthetic probe to verify cloud LangSmith tracing.")
+        diag_password = st.text_input(
+            "Diagnostic Password",
+            type="password",
+            key="diag_pwd_input",
+            help="Requires DIAGNOSTIC_PASSWORD in Streamlit Secrets.",
+        )
+        if st.button("Run Diagnostic Probe", key="btn_run_diagnostic", use_container_width=True):
+            if not verify_diagnostic_access(diag_password):
+                st.error("Invalid password or diagnostics disabled.")
+            else:
+                with st.spinner("Executing direct synthetic trace probe..."):
+                    diag_result = run_synthetic_trace_diagnostic()
+                if diag_result.get("status") == "success" and diag_result.get("read_back_verified"):
+                    st.success("✅ LangSmith trace successfully created and verified on server!")
+                    st.json(diag_result)
+                elif diag_result.get("status") == "error":
+                    st.error(f"❌ Diagnostic failed: {diag_result.get('error')}")
+                    st.json(diag_result)
+                else:
+                    st.warning("⚠️ Trace submitted, but read-back could not be verified.")
+                    st.json(diag_result)
 
 # 3. Main Header
 st.title("📊 Agentic Data Analyst")

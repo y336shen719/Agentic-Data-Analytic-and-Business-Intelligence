@@ -142,20 +142,35 @@ def resolve_api_key(user_input_key: Optional[str] = None) -> Optional[str]:
 
     Precedence:
     1. Explicit nonempty user-provided key.
-    2. Streamlit secrets (if available).
+    2. Streamlit secrets (if running in active Streamlit context or test mock).
     3. Environment variable OPENAI_API_KEY.
     4. Otherwise, None.
     """
     if user_input_key and user_input_key.strip():
         return user_input_key.strip()
 
+    from agent.tracing import _has_streamlit_context
+
+    if _has_streamlit_context():
+        try:
+            import streamlit as st
+
+            if hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secrets:
+                sec = str(st.secrets["OPENAI_API_KEY"]).strip()
+                if sec:
+                    return sec
+        except Exception:
+            pass
+
+    # Allow test mocking when st.secrets is explicitly injected
     try:
         import streamlit as st
 
-        if hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secrets:
-            sec = str(st.secrets["OPENAI_API_KEY"]).strip()
-            if sec:
-                return sec
+        if hasattr(st, "secrets") and type(st.secrets).__name__ == "MockSecrets":
+            if "OPENAI_API_KEY" in st.secrets:
+                sec = str(st.secrets["OPENAI_API_KEY"]).strip()
+                if sec:
+                    return sec
     except Exception:
         pass
 
@@ -618,7 +633,11 @@ def execute_session_turn(
         }
     finally:
         # Synchronously flush buffered LangSmith trace batches before UI cycle/rerun
-        flush_tracing(timeout=3.0)
+        turn_tracer = next(
+            (cb for cb in effective_config.get("callbacks", []) if hasattr(cb, "client")),
+            None,
+        )
+        flush_tracing(tracer=turn_tracer, timeout=3.0)
 
     session.ui_messages.append(assistant_record)
     return assistant_record

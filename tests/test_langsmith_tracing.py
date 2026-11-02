@@ -251,11 +251,12 @@ def test_streamlit_secrets_fallback_for_tracing_config():
     }
 
     with patch.dict(sys.modules, {"streamlit": mock_st}):
-        # Provide empty env mapping so os.environ is bypassed
-        cfg = load_langsmith_config(env={})
-        assert cfg.enabled is True
-        assert cfg.api_key == "lsv2_pt_secret_token"
-        assert cfg.project == "secrets-project"
+        with patch("agent.tracing._has_streamlit_context", return_value=True):
+            # Provide empty env mapping so os.environ is bypassed
+            cfg = load_langsmith_config(env={})
+            assert cfg.enabled is True
+            assert cfg.api_key == "lsv2_pt_secret_token"
+            assert cfg.project == "secrets-project"
 
 
 def test_runnable_tracing_config_binds_tracer_when_active():
@@ -314,5 +315,108 @@ def test_execute_session_turn_triggers_flush_tracing():
 
     with patch("agent.ui_session.flush_tracing") as mock_flush:
         execute_session_turn(session, "Hello data analyst")
-        mock_flush.assert_called_once_with(timeout=3.0)
+        mock_flush.assert_called_once()
+        # Verify a tracer or None was supplied with timeout=3.0
+        assert mock_flush.call_args[1].get("timeout") == 3.0
+
+
+def test_no_api_key_fingerprint_in_logs(caplog):
+    """Verify that sensitive API key fragments/fingerprints are never emitted in logs."""
+    import logging
+
+    secret_key = "lsv2_pt_super_secret_unique_key_12345"
+    cfg = LangSmithConfig(
+        enabled=True,
+        api_key=secret_key,
+        project="test-clean-logging",
+        endpoint="https://api.smith.langchain.com",
+    )
+
+    with caplog.at_level(logging.INFO):
+        setup_langsmith_environment(cfg)
+
+    # Neither raw key nor prefix/suffix should appear in the emitted log
+    assert secret_key not in caplog.text
+    assert "super_secret" not in caplog.text
+    assert "12345" not in caplog.text
+    assert "LangSmith native tracing is ACTIVE" in caplog.text
+
+
+def test_has_streamlit_context_guards_against_warnings():
+    """Verify _has_streamlit_context returns False in standard testing environments without throwing."""
+    from agent.tracing import _has_streamlit_context
+
+    assert _has_streamlit_context() is False
+
+
+def test_diagnostic_access_control():
+    """Verify authentication for administrator cloud diagnostics."""
+    from agent.tracing import has_diagnostic_password_configured, verify_diagnostic_access
+
+    # 1. When no password configured
+    with patch.dict(os.environ, {}, clear=True):
+        assert has_diagnostic_password_configured() is False
+        assert verify_diagnostic_access("any_password") is False
+        assert verify_diagnostic_access("") is False
+        assert verify_diagnostic_access(None) is False
+
+    # 2. When password is configured
+    with patch.dict(os.environ, {"DIAGNOSTIC_PASSWORD": "super-secure-admin-pass"}):
+        assert has_diagnostic_password_configured() is True
+        assert verify_diagnostic_access("wrong-pass") is False
+        assert verify_diagnostic_access("") is False
+        assert verify_diagnostic_access("super-secure-admin-pass") is True
+
+
+def test_run_synthetic_trace_diagnostic_disabled():
+    """Verify run_synthetic_trace_diagnostic returns error when tracing is disabled."""
+    from agent.tracing import run_synthetic_trace_diagnostic
+
+    cfg_disabled = LangSmithConfig(enabled=False, api_key=None)
+    res = run_synthetic_trace_diagnostic(config=cfg_disabled)
+    assert res["status"] == "error"
+    assert "disabled" in res["error"].lower() or "not configured" in res["error"].lower()
+
+
+def test_run_synthetic_trace_diagnostic_mocked_success():
+    """Verify synthetic trace creation, flush, and read-back verification flow."""
+    from agent.tracing import run_synthetic_trace_diagnostic
+
+    cfg = LangSmithConfig(
+        enabled=True,
+        api_key="lsv2_pt_mock_test_key",
+        project="diagnostic-project",
+        endpoint="https://api.smith.langchain.com",
+    )
+
+    mock_client = MagicMock()
+    mock_run = MagicMock()
+    mock_run.id = MagicMock()
+    mock_run.name = "synthetic_cloud_diagnostic_probe"
+    mock_run.status = "success"
+    mock_run.run_type = "chain"
+
+    with patch("agent.tracing.get_langsmith_client", return_value=mock_client):
+        with patch("langsmith.run_trees.RunTree") as mock_tree_cls:
+            mock_tree = MagicMock()
+            mock_tree.client = mock_client
+            mock_tree_cls.return_value = mock_tree
+
+            def fake_read_run(run_id):
+                mock_run.id = run_id
+                return mock_run
+
+            mock_client.read_run.side_effect = fake_read_run
+
+            diag_res = run_synthetic_trace_diagnostic(config=cfg, read_back_timeout=1.0)
+
+            assert diag_res["status"] == "success"
+            assert diag_res["read_back_verified"] is True
+            assert "run_id" in diag_res
+            assert diag_res["project"] == "diagnostic-project"
+            assert "api_key" not in diag_res  # Must never leak credentials
+            mock_tree.post.assert_called_once()
+            mock_tree.end.assert_called_once()
+            mock_client.flush.assert_called_once()
+
 

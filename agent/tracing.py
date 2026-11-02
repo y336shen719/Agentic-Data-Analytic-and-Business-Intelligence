@@ -7,10 +7,12 @@ graceful error handling, and session-aware metadata propagation for LangGraph ex
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hmac
 import logging
 import os
 import re
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
+import uuid
 
 from dotenv import load_dotenv
 
@@ -44,6 +46,24 @@ def _is_truthy(val: Optional[str]) -> bool:
     return str(val).strip().lower() in ("true", "1", "yes", "y", "t", "on")
 
 
+def _has_streamlit_context() -> bool:
+    """Return True if executing on a thread with an active Streamlit ScriptRunContext.
+
+    Passes suppress_warning=True to avoid emitting spurious 'missing ScriptRunContext' warnings.
+    """
+    try:
+        from streamlit.runtime.scriptrunner_utils import script_run_context
+
+        return script_run_context.get_script_run_ctx(suppress_warning=True) is not None
+    except Exception:
+        try:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+            return get_script_run_ctx(suppress_warning=True) is not None
+        except Exception:
+            return False
+
+
 def _resolve_val_from_env_or_secrets(
     keys: Sequence[str],
     env: Optional[Mapping[str, str]] = None,
@@ -56,20 +76,60 @@ def _resolve_val_from_env_or_secrets(
         if v is not None and str(v).strip():
             return str(v).strip()
 
-    # 2. Check Streamlit secrets if running inside Streamlit Cloud / App context
+    # 2. Check Streamlit secrets ONLY if running within an active Streamlit ScriptRunContext
+    if _has_streamlit_context():
+        try:
+            import streamlit as st
+
+            if hasattr(st, "secrets"):
+                for k in keys:
+                    if k in st.secrets:
+                        sec_val = str(st.secrets[k]).strip()
+                        if sec_val:
+                            return sec_val
+        except Exception:
+            pass
+
+    return None
+
+
+def sync_secrets_to_environment() -> None:
+    """Synchronize Streamlit secrets to process environment variables in main execution thread.
+
+    Ensures background threads and child workers inherit configuration from os.environ
+    without needing to call Streamlit APIs outside of ScriptRunContext.
+    """
+    if not _has_streamlit_context():
+        return
+
     try:
         import streamlit as st
 
-        if hasattr(st, "secrets"):
-            for k in keys:
-                if k in st.secrets:
-                    sec_val = str(st.secrets[k]).strip()
-                    if sec_val:
-                        return sec_val
+        if not hasattr(st, "secrets"):
+            return
+
+        keys_to_sync = [
+            "OPENAI_API_KEY",
+            "LANGSMITH_TRACING",
+            "LANGCHAIN_TRACING_V2",
+            "LANGSMITH_API_KEY",
+            "LANGCHAIN_API_KEY",
+            "LANGSMITH_PROJECT",
+            "LANGCHAIN_PROJECT",
+            "LANGSMITH_ENDPOINT",
+            "LANGCHAIN_ENDPOINT",
+            "LANGSMITH_WORKSPACE_ID",
+            "LANGCHAIN_WORKSPACE_ID",
+            "DIAGNOSTIC_PASSWORD",
+            "ADMIN_PASSWORD",
+        ]
+        for k in keys_to_sync:
+            if k in st.secrets:
+                val = str(st.secrets[k]).strip()
+                if val and not os.environ.get(k):
+                    os.environ[k] = val
     except Exception:
         pass
-
-    return None
 
 
 def load_langsmith_config(env: Optional[Mapping[str, str]] = None) -> LangSmithConfig:
@@ -137,8 +197,7 @@ def load_langsmith_config(env: Optional[Mapping[str, str]] = None) -> LangSmithC
     )
 
 
-# Module-level cached tracer and client to prevent redundant connection setup
-_CACHED_TRACER: Optional[Any] = None
+# Module-level cached client connection pool
 _CACHED_CLIENT: Optional[Any] = None
 
 
@@ -167,7 +226,6 @@ def get_langsmith_client(config: Optional[LangSmithConfig] = None) -> Optional[A
 
 def get_langchain_tracer(config: Optional[LangSmithConfig] = None) -> Optional[Any]:
     """Obtain or initialize a configured LangChainTracer bound to the current project and client."""
-    global _CACHED_TRACER
     cfg = config or load_langsmith_config()
     if not (cfg.enabled and cfg.api_key):
         return None
@@ -176,23 +234,18 @@ def get_langchain_tracer(config: Optional[LangSmithConfig] = None) -> Optional[A
     if client is None:
         return None
 
-    if (
-        _CACHED_TRACER is None
-        or getattr(_CACHED_TRACER, "project_name", None) != cfg.project
-        or getattr(_CACHED_TRACER, "client", None) is not client
-    ):
-        try:
-            from langchain_core.tracers import LangChainTracer
+    try:
+        from langchain_core.tracers import LangChainTracer
 
-            _CACHED_TRACER = LangChainTracer(
-                project_name=cfg.project,
-                client=client,
-            )
-        except Exception as exc:
-            logger.warning("Failed to initialize LangChainTracer: %s", exc)
-            return None
-
-    return _CACHED_TRACER
+        # Always return a fresh tracer instance bound to the shared Client connection pool.
+        # This prevents order_map / run_map contamination across consecutive turns or concurrent sessions.
+        return LangChainTracer(
+            project_name=cfg.project,
+            client=client,
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize LangChainTracer: %s", exc)
+        return None
 
 
 def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> bool:
@@ -204,7 +257,7 @@ def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> boo
     Returns:
         True if tracing is actively enabled and configured with an API key, False otherwise.
     """
-    global _CACHED_TRACER, _CACHED_CLIENT
+    global _CACHED_CLIENT
     cfg = config or load_langsmith_config()
 
     if cfg.enabled and cfg.api_key:
@@ -229,25 +282,154 @@ def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> boo
         except Exception:
             pass
 
-        _CACHED_TRACER = None
         _CACHED_CLIENT = None
 
-        key_len = len(cfg.api_key)
-        masked_key = f"{cfg.api_key[:8]}...{cfg.api_key[-4:]}" if key_len > 12 else "[CONFIGURED]"
         logger.info(
-            "LangSmith native tracing is ACTIVE for project '%s' (endpoint: %s, workspace: %s, key: %s).",
+            "LangSmith native tracing is ACTIVE for project '%s' (endpoint: %s, workspace: %s).",
             cfg.project,
             cfg.endpoint,
             cfg.workspace_id or "default",
-            masked_key,
         )
         return True
     else:
         os.environ["LANGSMITH_TRACING"] = "false"
         os.environ["LANGCHAIN_TRACING_V2"] = "false"
-        _CACHED_TRACER = None
         _CACHED_CLIENT = None
         return False
+
+
+def has_diagnostic_password_configured() -> bool:
+    """Check whether a diagnostic password is set in environment or secrets."""
+    pwd = _resolve_val_from_env_or_secrets(("DIAGNOSTIC_PASSWORD", "ADMIN_PASSWORD"))
+    return bool(pwd and pwd.strip())
+
+
+def verify_diagnostic_access(provided_password: Optional[str]) -> bool:
+    """Verify provided password against DIAGNOSTIC_PASSWORD using constant-time comparison.
+
+    Keeps diagnostics disabled by default if no password is configured.
+    Never logs or returns passwords.
+    """
+    if not provided_password or not provided_password.strip():
+        return False
+
+    configured = _resolve_val_from_env_or_secrets(("DIAGNOSTIC_PASSWORD", "ADMIN_PASSWORD"))
+    if not configured or not configured.strip():
+        return False
+
+    return hmac.compare_digest(provided_password.strip(), configured.strip())
+
+
+def run_synthetic_trace_diagnostic(
+    config: Optional[LangSmithConfig] = None,
+    read_back_timeout: float = 5.0,
+) -> Dict[str, Any]:
+    """Create one uniquely identifiable synthetic trace directly through LangSmith SDK.
+
+    Finalizes/flushes the trace and reads it back via LangSmith API to verify
+    server-side persistence. Does not invoke OpenAI, SQL, DuckDB, or Agent tools.
+    Never returns or logs API keys, passwords, prompts, or sensitive credentials.
+    """
+    from datetime import datetime, timezone
+    import time
+
+    cfg = config or load_langsmith_config()
+    if not (cfg.enabled and cfg.api_key):
+        return {
+            "status": "error",
+            "error": "LangSmith tracing is disabled or LANGSMITH_API_KEY is not configured.",
+            "project": cfg.project,
+            "endpoint": cfg.endpoint,
+            "workspace_id": cfg.workspace_id or "default",
+        }
+
+    client = get_langsmith_client(cfg)
+    if client is None:
+        return {
+            "status": "error",
+            "error": "Failed to initialize LangSmith client with current credentials.",
+            "project": cfg.project,
+            "endpoint": cfg.endpoint,
+            "workspace_id": cfg.workspace_id or "default",
+        }
+
+    test_run_id = uuid.uuid4()
+    start_time = time.monotonic()
+
+    try:
+        from langsmith.run_trees import RunTree
+
+        now = datetime.now(timezone.utc)
+        tree = RunTree(
+            id=test_run_id,
+            name="synthetic_cloud_diagnostic_probe",
+            run_type="chain",
+            inputs={"probe_type": "cloud_health_check"},
+            outputs={"probe_status": "synthetic_success"},
+            project_name=cfg.project,
+            start_time=now,
+            end_time=now,
+            extra={
+                "metadata": {
+                    "source": "cloud_diagnostic_probe",
+                    "synthetic": True,
+                }
+            },
+            client=client,
+        )
+        tree.post()
+        tree.end(outputs={"probe_status": "completed"})
+        tree.patch()
+
+        # Finalize and flush
+        tree.client.flush(timeout=5.0)
+        flush_latency = time.monotonic() - start_time
+
+    except Exception as exc:
+        return {
+            "status": "upload_error",
+            "run_id": str(test_run_id),
+            "error": str(exc),
+            "project": cfg.project,
+            "endpoint": cfg.endpoint,
+            "workspace_id": cfg.workspace_id or "default",
+            "flush_latency_seconds": round(time.monotonic() - start_time, 3),
+        }
+
+    # Server-side persistence verification: read back the synthetic trace
+    read_back_verified = False
+    read_back_details: Dict[str, Any] = {}
+    read_back_error = None
+
+    # Allow slight indexing window on LangSmith cloud
+    time.sleep(1.0)
+    deadline = time.monotonic() + max(1.0, read_back_timeout - 1.0)
+    while time.monotonic() < deadline:
+        try:
+            read_run = client.read_run(test_run_id)
+            if read_run and str(read_run.id) == str(test_run_id):
+                read_back_verified = True
+                read_back_details = {
+                    "run_name": getattr(read_run, "name", "synthetic_cloud_diagnostic_probe"),
+                    "status": getattr(read_run, "status", "success"),
+                    "run_type": getattr(read_run, "run_type", "chain"),
+                }
+                break
+        except Exception as exc:
+            read_back_error = str(exc)
+            time.sleep(1.0)
+
+    return {
+        "status": "success" if read_back_verified else "submitted_unverified",
+        "run_id": str(test_run_id),
+        "project": cfg.project,
+        "endpoint": cfg.endpoint,
+        "workspace_id": cfg.workspace_id or "default",
+        "flush_latency_seconds": round(flush_latency, 3),
+        "read_back_verified": read_back_verified,
+        "read_back_details": read_back_details if read_back_verified else None,
+        "error": None if read_back_verified else (read_back_error or "Read-back timed out before server indexing"),
+    }
 
 
 def flush_tracing(
