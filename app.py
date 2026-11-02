@@ -2,7 +2,8 @@
 
 Provides a natural-language business intelligence interface powered by a stateful
 LangGraph agent querying the Olist Brazilian E-Commerce DuckDB database, executing
-Python statistical analyses, and rendering interactive Plotly charts.
+Python statistical analyses, and rendering interactive Plotly charts within an
+independently scrollable SaaS dashboard layout.
 """
 
 from __future__ import annotations
@@ -55,13 +56,20 @@ VIEW_DESCRIPTIONS: Dict[str, str] = {
     "category_sales_summary": "Monthly category-level sales, item volumes, gross revenue, and active seller metrics.",
 }
 
+ASSETS_DIR = Path(__file__).parent / "assets"
+FAVICON_PATH = ASSETS_DIR / "favicon.svg"
+STYLES_PATH = ASSETS_DIR / "styles.css"
+
 
 # ==============================================================================
-# 1. Page Configuration & Environment Setup
+# 1. Page Configuration & Custom CSS Injection
 # ==============================================================================
+
+page_icon_val = str(FAVICON_PATH) if FAVICON_PATH.exists() else None
 
 st.set_page_config(
-    page_title="Data Analytics & Business Intelligence Agent",
+    page_title="Data Analytics | BI Agent",
+    page_icon=page_icon_val,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -69,6 +77,13 @@ st.set_page_config(
 # Synchronize Streamlit secrets to process environment in main execution thread
 sync_secrets_to_environment()
 setup_langsmith_environment()
+
+# Inject external enterprise SaaS stylesheet
+if STYLES_PATH.exists():
+    try:
+        st.markdown(f"<style>{STYLES_PATH.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+    except Exception:
+        pass
 
 
 # ==============================================================================
@@ -108,27 +123,29 @@ def check_app_access() -> bool:
     if st.session_state.get("authenticated", False):
         return True
 
-    st.subheader("Data Analytics & Business Intelligence Agent")
-    st.caption("Please enter the access password to continue.")
+    col_l, col_center, col_r = st.columns([1, 1.8, 1])
+    with col_center:
+        st.subheader("Data Analytics & Business Intelligence Agent")
+        st.caption("Enterprise Analytics Assistant. Please enter the access password to continue.")
 
-    with st.form("access_gate_form", clear_on_submit=False):
-        entered_password = st.text_input(
-            "Access Password",
-            type="password",
-            placeholder="Enter password",
-            key="app_access_password_input",
-            help="Application access password configured in Streamlit Secrets or environment.",
-        )
-        submitted = st.form_submit_button("Enter", type="primary")
-        if submitted:
-            if entered_password and hmac.compare_digest(
-                entered_password.strip().encode("utf-8"),
-                configured_password.encode("utf-8"),
-            ):
-                st.session_state["authenticated"] = True
-                st.rerun()
-            else:
-                st.error("Incorrect password. Please try again.")
+        with st.form("access_gate_form", clear_on_submit=False):
+            entered_password = st.text_input(
+                "Access Password",
+                type="password",
+                placeholder="Enter password",
+                key="app_access_password_input",
+                help="Application access password configured in Streamlit Secrets or environment.",
+            )
+            submitted = st.form_submit_button("Enter", type="primary", use_container_width=True)
+            if submitted:
+                if entered_password and hmac.compare_digest(
+                    entered_password.strip().encode("utf-8"),
+                    configured_password.encode("utf-8"),
+                ):
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect password. Please try again.")
 
     return False
 
@@ -141,7 +158,7 @@ if not check_app_access():
 # 3. Sidebar Navigation and Configuration
 # ==============================================================================
 
-st.sidebar.title("Data Analytics & Business Intelligence Agent")
+st.sidebar.title("Data Analytics & BI Agent")
 st.sidebar.markdown(
     "Autonomous E-Commerce Business Intelligence assistant powered by a "
     "stateful LangGraph agent, DuckDB, and Plotly."
@@ -267,13 +284,14 @@ def load_database_schema(db_path: str) -> Dict[str, Any]:
 st.header("Dataset Explorer")
 st.markdown(
     """
-    **Dataset Summary: Olist Brazilian E-Commerce**
-    - **Dataset Name**: Olist Brazilian E-Commerce
-    - **Database Engine**: DuckDB
-    - **Access Mode**: Read-only
-    - **Dataset Scale**: Approximately 99,000 orders
-    - **Time Coverage**: September 2016 – October 2018
-    """
+    <div style="margin-bottom: 0.65rem;">
+        <span class="metadata-pill"><strong>Dataset</strong>: Olist Brazilian E-Commerce</span>
+        <span class="metadata-pill"><strong>Engine</strong>: DuckDB (Read-Only)</span>
+        <span class="metadata-pill"><strong>Volume</strong>: ~99,000 orders</span>
+        <span class="metadata-pill"><strong>Period</strong>: 2016–2018</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 schema_error: Optional[str] = None
@@ -290,66 +308,68 @@ except Exception as exc:
 if schema_error:
     st.warning(schema_error)
 else:
-    tab_tables, tab_views = st.tabs(
-        [f"Base Tables ({len(base_tables)})", f"Analytical Views ({len(analytical_views)})"]
-    )
-    with tab_tables:
-        if not base_tables:
-            st.info("No base tables found in database.")
-        for tbl in base_tables:
-            tbl_name = tbl["name"]
-            with st.expander(tbl_name, expanded=False):
-                desc = BASE_TABLE_DESCRIPTIONS.get(tbl_name)
-                if desc:
-                    st.caption(desc)
-                cols = tbl.get("columns", [])
-                if cols:
-                    col_records = []
-                    for c in cols:
-                        nullable_val = c.get("nullable")
-                        nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
-                        rec = {
-                            "Column": c["name"],
-                            "Data Type": c["data_type"],
-                            "Nullable": nullable_str,
-                        }
-                        if "description" in c:
-                            rec["Description"] = c["description"]
-                        col_records.append(rec)
-                    st.dataframe(col_records, width="stretch", hide_index=True)
-                else:
-                    st.caption("No column metadata available.")
+    # Height-constrained container prevents schema expansion from displacing the chat panel
+    with st.container(height=260, border=False):
+        tab_tables, tab_views = st.tabs(
+            [f"Base Tables ({len(base_tables)})", f"Analytical Views ({len(analytical_views)})"]
+        )
+        with tab_tables:
+            if not base_tables:
+                st.info("No base tables found in database.")
+            for tbl in base_tables:
+                tbl_name = tbl["name"]
+                with st.expander(tbl_name, expanded=False):
+                    desc = BASE_TABLE_DESCRIPTIONS.get(tbl_name)
+                    if desc:
+                        st.caption(desc)
+                    cols = tbl.get("columns", [])
+                    if cols:
+                        col_records = []
+                        for c in cols:
+                            nullable_val = c.get("nullable")
+                            nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
+                            rec = {
+                                "Column": c["name"],
+                                "Data Type": c["data_type"],
+                                "Nullable": nullable_str,
+                            }
+                            if "description" in c:
+                                rec["Description"] = c["description"]
+                            col_records.append(rec)
+                        st.dataframe(col_records, width="stretch", hide_index=True)
+                    else:
+                        st.caption("No column metadata available.")
 
-    with tab_views:
-        if not analytical_views:
-            st.info("No analytical views found in database.")
-        for vw in analytical_views:
-            vw_name = vw["name"]
-            with st.expander(f"{vw_name} (Analytical View)", expanded=False):
-                purpose = VIEW_DESCRIPTIONS.get(vw_name) or vw.get("purpose")
-                if purpose:
-                    st.caption(f"**Purpose**: {purpose}")
-                if vw.get("grain"):
-                    st.caption(f"**Grain**: {vw['grain']}")
-                if vw.get("warning"):
-                    st.caption(f"**Warning**: {vw['warning']}")
-                cols = vw.get("columns", [])
-                if cols:
-                    col_records = []
-                    for c in cols:
-                        nullable_val = c.get("nullable")
-                        nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
-                        rec = {
-                            "Column": c["name"],
-                            "Data Type": c["data_type"],
-                            "Nullable": nullable_str,
-                        }
-                        if "description" in c:
-                            rec["Description"] = c["description"]
-                        col_records.append(rec)
-                    st.dataframe(col_records, width="stretch", hide_index=True)
-                else:
-                    st.caption("No column metadata available.")
+        with tab_views:
+            if not analytical_views:
+                st.info("No analytical views found in database.")
+            for vw in analytical_views:
+                vw_name = vw["name"]
+                with st.expander(f"{vw_name} (Analytical View)", expanded=False):
+                    purpose = VIEW_DESCRIPTIONS.get(vw_name) or vw.get("purpose")
+                    if purpose:
+                        st.caption(f"**Purpose**: {purpose}")
+                    if vw.get("grain"):
+                        st.caption(f"**Grain**: {vw['grain']}")
+                    if vw.get("warning"):
+                        st.caption(f"**Warning**: {vw['warning']}")
+                    cols = vw.get("columns", [])
+                    if cols:
+                        col_records = []
+                        for c in cols:
+                            nullable_val = c.get("nullable")
+                            nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
+                            rec = {
+                                "Column": c["name"],
+                                "Data Type": c["data_type"],
+                                "Nullable": nullable_str,
+                            }
+                            if "description" in c:
+                                rec["Description"] = c["description"]
+                            col_records.append(rec)
+                        st.dataframe(col_records, width="stretch", hide_index=True)
+                    else:
+                        st.caption("No column metadata available.")
 
 
 # ==============================================================================
@@ -361,7 +381,7 @@ with st.form("query_form", clear_on_submit=True):
     with col_input:
         query_input = st.text_input(
             "Question",
-            placeholder="Ask a business analytics question about the dataset...",
+            placeholder="Ask a business analytics question...",
             label_visibility="collapsed",
             disabled=not bool(resolved_key),
         )
@@ -387,7 +407,7 @@ if active_prompt and session is not None:
 
 
 # ==============================================================================
-# 7. Section C (Lower): Conversation History
+# 7. Section C (Lower): Dedicated Scrollable Conversation History Panel
 # ==============================================================================
 
 def render_assistant_message(
@@ -430,16 +450,18 @@ def render_assistant_message(
 
 st.header("Conversation History")
 
-if session is not None and session.ui_messages:
-    for msg in session.ui_messages:
-        role = msg.get("role", "assistant")
-        if role == "user":
-            with st.chat_message("user"):
-                st.markdown(msg.get("content", ""))
-        else:
-            render_assistant_message(msg, session.chart_registry, show_debug=show_debug)
-else:
-    st.info(
-        "Welcome to the Data Analytics & Business Intelligence Agent. "
-        "Ask a business analytics question above, or select an example question from the sidebar to begin."
-    )
+# Native scrollable chat container with automatic scroll-to-bottom on new messages
+with st.container(height=520, border=True, autoscroll=True):
+    if session is not None and session.ui_messages:
+        for msg in session.ui_messages:
+            role = msg.get("role", "assistant")
+            if role == "user":
+                with st.chat_message("user"):
+                    st.markdown(msg.get("content", ""))
+            else:
+                render_assistant_message(msg, session.chart_registry, show_debug=show_debug)
+    else:
+        st.info(
+            "Welcome to the Data Analytics & Business Intelligence Agent. "
+            "Ask a business analytics question above, or select an example question from the sidebar to begin."
+        )

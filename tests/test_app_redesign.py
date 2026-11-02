@@ -319,3 +319,64 @@ def test_admin_diagnostics_integration(monkeypatch):
     assert len(diag_expander) == 1
     assert verify_diagnostic_access("admin-diag-secret") is True
     assert verify_diagnostic_access("bad-secret") is False
+
+
+# ==============================================================================
+# 16-18. SaaS Dashboard Polish: Assets & Scrollable Chat Container
+# ==============================================================================
+
+def test_saas_assets_and_page_config(monkeypatch):
+    """Verify SVG favicon, external stylesheet, and updated SaaS branding."""
+    favicon_path = Path(__file__).parent.parent / "assets" / "favicon.svg"
+    styles_path = Path(__file__).parent.parent / "assets" / "styles.css"
+
+    assert favicon_path.exists(), "assets/favicon.svg must exist"
+    svg_content = favicon_path.read_text(encoding="utf-8")
+    assert "<svg" in svg_content and "</svg>" in svg_content
+    assert "#6366f1" in svg_content or "#4f46e5" in svg_content  # Indigo palette
+
+    assert styles_path.exists(), "assets/styles.css must exist"
+    css_content = styles_path.read_text(encoding="utf-8")
+    assert "--accent-primary" in css_content
+    assert "--bg-app" in css_content
+
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "secret123")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server-test-key")
+    at = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    at.session_state["authenticated"] = True
+    at.run()
+
+    # Sidebar branding
+    sidebar_title = at.sidebar.title[0].value
+    assert sidebar_title == "Data Analytics & BI Agent"
+    assert "📊" not in sidebar_title
+
+
+def test_scrollable_conversation_container(monkeypatch):
+    """Verify conversation history is housed inside a scrollable container with autoscroll."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "secret123")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server-test-key")
+    at = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    at.session_state["authenticated"] = True
+    at.run()
+
+    # Ensure Conversation History header exists
+    headers = [h.value for h in at.header]
+    assert "Conversation History" in headers
+
+    # Verify messages inside container render without page exceptions
+    session = at.session_state["agent_session"]
+    session.ui_messages.append({"role": "user", "content": "Test user query"})
+    session.ui_messages.append({
+        "role": "assistant",
+        "content": "Test assistant response with analytical details.",
+        "chart_ids": [],
+        "tool_executions": [],
+    })
+    at.run()
+
+    assert not at.exception
+    assert len(at.chat_message) == 2
+    assert "Test user query" in at.chat_message[0].markdown[0].value
+    assert "Test assistant response" in at.chat_message[1].markdown[0].value
+
