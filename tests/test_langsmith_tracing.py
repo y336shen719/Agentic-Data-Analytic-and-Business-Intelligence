@@ -219,3 +219,100 @@ def test_tool_trace_metadata_cleanliness_and_chart_propagation():
     assert res["metadata"]["rows_used"] == 2
     assert res["metadata"]["x_column"] == "category"
     assert res["metadata"]["y_column"] == "revenue"
+
+
+def test_workspace_id_resolution_and_environment_sync():
+    """Verify that workspace_id is parsed and propagated to environment variables."""
+    env = {
+        "LANGSMITH_TRACING": "true",
+        "LANGSMITH_API_KEY": "lsv2_pt_orgkey_123456",
+        "LANGSMITH_PROJECT": "org-project",
+        "LANGSMITH_WORKSPACE_ID": "ws-uuid-998877",
+    }
+    cfg = load_langsmith_config(env=env)
+    assert cfg.workspace_id == "ws-uuid-998877"
+
+    is_active = setup_langsmith_environment(cfg)
+    assert is_active is True
+    assert os.environ.get("LANGSMITH_WORKSPACE_ID") == "ws-uuid-998877"
+    assert os.environ.get("LANGCHAIN_WORKSPACE_ID") == "ws-uuid-998877"
+
+
+def test_streamlit_secrets_fallback_for_tracing_config():
+    """Verify that tracing config safely falls back to Streamlit secrets when env vars are missing."""
+    import sys
+    from types import ModuleType
+
+    mock_st = ModuleType("streamlit")
+    mock_st.secrets = {
+        "LANGSMITH_TRACING": "true",
+        "LANGSMITH_API_KEY": "lsv2_pt_secret_token",
+        "LANGSMITH_PROJECT": "secrets-project",
+    }
+
+    with patch.dict(sys.modules, {"streamlit": mock_st}):
+        # Provide empty env mapping so os.environ is bypassed
+        cfg = load_langsmith_config(env={})
+        assert cfg.enabled is True
+        assert cfg.api_key == "lsv2_pt_secret_token"
+        assert cfg.project == "secrets-project"
+
+
+def test_runnable_tracing_config_binds_tracer_when_active():
+    """Verify that create_runnable_tracing_config injects LangChainTracer into callbacks when active."""
+    env = {
+        "LANGSMITH_TRACING": "true",
+        "LANGSMITH_API_KEY": "lsv2_pt_validkey",
+        "LANGSMITH_PROJECT": "test-callbacks-project",
+    }
+    cfg = load_langsmith_config(env=env)
+    setup_langsmith_environment(cfg)
+
+    config = create_runnable_tracing_config(source="streamlit", session_id="test_sess_123")
+    assert "callbacks" in config
+    assert len(config["callbacks"]) >= 1
+    tracer = config["callbacks"][0]
+    assert type(tracer).__name__ == "LangChainTracer"
+    assert tracer.project_name == "test-callbacks-project"
+
+    # Reset
+    setup_langsmith_environment(LangSmithConfig(enabled=False, api_key=None))
+    disabled_config = create_runnable_tracing_config(source="streamlit", session_id="test_sess_123")
+    assert "callbacks" not in disabled_config
+
+
+def test_flush_tracing_execution_and_resilience():
+    """Verify that flush_tracing calls wait_for_futures/flush and survives exceptions gracefully."""
+    from agent.tracing import flush_tracing
+
+    mock_tracer = MagicMock()
+    mock_client = MagicMock()
+    mock_tracer.client = mock_client
+
+    # 1. Successful flush
+    ok = flush_tracing(tracer=mock_tracer, timeout=1.0)
+    assert ok is True
+    mock_tracer.wait_for_futures.assert_called_once()
+    mock_client.flush.assert_called_once_with(timeout=1.0)
+
+    # 2. Resilient on exception (should return False and never raise)
+    failing_tracer = MagicMock()
+    failing_tracer.wait_for_futures.side_effect = RuntimeError("Network timeout to LangSmith")
+    ok_fail = flush_tracing(tracer=failing_tracer, timeout=1.0)
+    assert ok_fail is False
+
+
+def test_execute_session_turn_triggers_flush_tracing():
+    """Verify that execute_session_turn triggers synchronous flush_tracing on completion."""
+    mock_llm = MagicMock()
+    session = create_agent_session(llm=mock_llm)
+
+    def fake_invoke(state, config=None):
+        return {"messages": state["messages"]}
+
+    session.graph.invoke = fake_invoke
+
+    with patch("agent.ui_session.flush_tracing") as mock_flush:
+        execute_session_turn(session, "Hello data analyst")
+        mock_flush.assert_called_once_with(timeout=3.0)
+

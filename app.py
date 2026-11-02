@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from agent.config import DEFAULT_OPENAI_MODEL
+from agent.tracing import setup_langsmith_environment
 from agent.ui_session import (
     execute_session_turn,
     get_or_create_session,
@@ -30,6 +31,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Synchronize LangSmith tracing environment from os.environ or Streamlit secrets
+setup_langsmith_environment()
 
 # 2. Sidebar Navigation and Configuration
 st.sidebar.title("📊 Data Analyst Agent")

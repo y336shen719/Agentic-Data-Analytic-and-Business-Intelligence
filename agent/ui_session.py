@@ -42,6 +42,7 @@ from agent.tool_wrappers import (
 )
 from agent.tracing import (
     create_runnable_tracing_config,
+    flush_tracing,
     setup_langsmith_environment,
 )
 from data.prepare_data import DEFAULT_DB_PATH
@@ -615,6 +616,9 @@ def execute_session_turn(
             "tool_executions": [],
             "error": True,
         }
+    finally:
+        # Synchronously flush buffered LangSmith trace batches before UI cycle/rerun
+        flush_tracing(timeout=3.0)
 
     session.ui_messages.append(assistant_record)
     return assistant_record
