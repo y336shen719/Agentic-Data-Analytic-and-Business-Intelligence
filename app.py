@@ -81,15 +81,13 @@ if STYLES_PATH.exists():
 # ==============================================================================
 
 def get_app_access_password() -> Optional[str]:
-    """Retrieve APP_ACCESS_PASSWORD from Streamlit Secrets or environment."""
-    val: Optional[str] = None
-    if _has_streamlit_context():
+    """Retrieve APP_ACCESS_PASSWORD from environment or Streamlit Secrets."""
+    val: Optional[str] = os.environ.get("APP_ACCESS_PASSWORD")
+    if not val and _has_streamlit_context():
         try:
             val = st.secrets.get("APP_ACCESS_PASSWORD")
         except Exception:
             val = None
-    if not val:
-        val = os.environ.get("APP_ACCESS_PASSWORD")
     if val:
         val = str(val).strip()
     return val or None
@@ -165,7 +163,7 @@ if not db_file.exists():
 page_analytics = st.Page(
     "views/analytics.py",
     title="Analytics Workspace",
-    icon=":material/analytics:",
+    icon=":material/home:",
     default=True,
 )
 page_db = st.Page(
@@ -174,7 +172,7 @@ page_db = st.Page(
     icon=":material/database:",
 )
 
-pg = st.navigation([page_analytics, page_db])
+pg = st.navigation([page_analytics, page_db], position="hidden")
 
 
 # ==============================================================================
@@ -182,48 +180,52 @@ pg = st.navigation([page_analytics, page_db])
 # ==============================================================================
 
 st.sidebar.title("Data Analytics & BI Agent")
-st.sidebar.markdown(
-    "Autonomous E-Commerce Business Intelligence assistant powered by a "
-    "stateful LangGraph agent, DuckDB, and Plotly."
-)
+st.sidebar.caption("Business Intelligence Copilot")
 
-# Example questions
+st.sidebar.page_link(page_analytics, label="Analytics Workspace", icon=":material/home:")
+st.sidebar.page_link(page_db, label="Database Explorer", icon=":material/database:")
+st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+
+# Example questions matching modern copilot cards
 EXAMPLE_QUESTIONS = [
-    "What are the top 5 product categories by total delivered revenue?",
+    "What are the top 5 product categories by total revenue?",
     "Show the monthly revenue trend for delivered orders in 2017.",
     "What is the correlation between product price and freight value?",
     "Analyze the distribution of order review scores with a histogram.",
     "Which Brazilian states have the highest average freight value?",
 ]
 
-st.sidebar.header("Example Questions")
-for idx, q_text in enumerate(EXAMPLE_QUESTIONS):
-    if st.sidebar.button(q_text, key=f"example_q_{idx}", width="stretch"):
-        st.session_state["pending_prompt"] = q_text
-        if pg != page_analytics:
-            st.switch_page(page_analytics)
-        else:
-            st.rerun()
+with st.sidebar.container(key="example_questions_container"):
+    st.header("Example Questions")
+    for idx, q_text in enumerate(EXAMPLE_QUESTIONS):
+        if st.button(q_text, key=f"example_q_{idx}", width="stretch"):
+            st.session_state["pending_prompt"] = q_text
+            if pg != page_analytics:
+                st.switch_page(page_analytics)
+            else:
+                st.rerun()
 
-st.sidebar.header("Session Management")
-if st.sidebar.button("Clear Conversation", width="stretch", type="secondary"):
-    if "agent_session" in st.session_state and st.session_state["agent_session"]:
-        reset_agent_session(st.session_state["agent_session"])
-    st.session_state["pending_prompt"] = None
-    st.rerun()
+with st.sidebar.container(key="session_management_container"):
+    st.header("Session Management")
+    if st.button("Clear Conversation", icon=":material/delete:", width="stretch", type="secondary"):
+        if "agent_session" in st.session_state and st.session_state["agent_session"]:
+            reset_agent_session(st.session_state["agent_session"])
+        st.session_state["pending_prompt"] = None
+        st.rerun()
 
-if st.sidebar.button("Log Out", width="stretch"):
-    st.session_state["authenticated"] = False
-    st.session_state.pop("pending_prompt", None)
-    st.rerun()
+    if st.button("Log Out", icon=":material/logout:", width="stretch"):
+        st.session_state["authenticated"] = False
+        st.session_state.pop("pending_prompt", None)
+        st.rerun()
 
-st.sidebar.header("Developer Settings")
-st.sidebar.checkbox(
-    "Show Technical Tool Executions",
-    value=False,
-    key="show_debug",
-    help="Display SQL queries, Python arguments, and tool execution metadata for debugging.",
-)
+with st.sidebar.container(key="developer_settings_container"):
+    st.header("Developer Settings")
+    st.checkbox(
+        ":material/settings: Show Technical Tool Executions",
+        value=False,
+        key="show_debug",
+        help="Display SQL queries, Python arguments, and tool execution metadata for debugging.",
+    )
 
 # Admin Diagnostics (Disabled by default, requires DIAGNOSTIC_PASSWORD in secrets/env)
 if has_diagnostic_password_configured():

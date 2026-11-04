@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -39,10 +39,13 @@ from views.database_explorer import (
     fetch_table_preview_rows,
     generate_erd_dot,
     get_table_row_counts,
+    preview_table_dialog,
+    show_erd_dialog,
 )
 from tools.sql_tool import get_database_schema
 
 APP_PATH = Path(__file__).parent.parent / "app.py"
+EXPLORER_PATH = Path(__file__).parent.parent / "views" / "database_explorer.py"
 
 
 # ==============================================================================
@@ -72,19 +75,21 @@ def test_navigation_between_pages(monkeypatch):
     at.run()
 
     # Default page is Analytics Workspace
-    assert at.header[0].value == "Dataset Explorer"
+    assert at.header[0].value == "Analytics Workspace"
+    assert "Conversation History" in [h.value for h in at.header]
 
     # Switch page to Database Explorer
     at.switch_page("views/database_explorer.py").run()
     assert not at.exception
     headers = [h.value for h in at.header]
     assert "Database Explorer" in headers
-    assert "Dataset Explorer" not in headers
+    assert "Conversation History" not in headers
 
     # Switch back to Analytics Workspace
     at.switch_page("views/analytics.py").run()
     assert not at.exception
-    assert at.header[0].value == "Dataset Explorer"
+    assert at.header[0].value == "Analytics Workspace"
+    assert "Conversation History" in [h.value for h in at.header]
 
 
 def test_session_preserved_across_page_switches(monkeypatch):
@@ -135,9 +140,9 @@ def test_model_selector_integrated_in_input_bar(monkeypatch):
     assert len(at.selectbox) >= 1
     model_box = [sb for sb in at.selectbox if "Model" in sb.label][0]
     assert model_box.value == DEFAULT_OPENAI_MODEL
-    assert "gpt-4o" in model_box.options
-    assert "gpt-4o-mini" in model_box.options
-    assert "o3-mini" in model_box.options
+    assert any(opt.lower() == "gpt-4o" for opt in model_box.options)
+    assert any("gpt-4o-mini" in opt.lower() for opt in model_box.options)
+    assert any("o3-mini" in opt.lower() for opt in model_box.options)
 
     # Selectbox is not in sidebar
     assert len(at.sidebar.selectbox) == 0
@@ -179,7 +184,7 @@ def test_selected_model_passed_to_agent_turn(monkeypatch):
 # ==============================================================================
 
 def test_database_explorer_metadata_and_structure(monkeypatch):
-    """Database Explorer displays all 9 base tables, 2 views, and read-only status."""
+    """Database Explorer displays metadata pills, 3 tabs, base tables, views, and ERD."""
     monkeypatch.setenv("APP_ACCESS_PASSWORD", "secret123")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-server-test-key")
     at = AppTest.from_file(str(APP_PATH), default_timeout=10)
@@ -190,11 +195,32 @@ def test_database_explorer_metadata_and_structure(monkeypatch):
     # Header & Subtitle
     headers = [h.value for h in at.header]
     assert "Database Explorer" in headers
-    assert any("Olist Brazilian E-Commerce" in cap.value for cap in at.caption)
+    # Metadata pills match Analytics Workspace design (Dataset, Volume, Period without Engine)
+    pill_markdowns = [
+        m.value for m in at.markdown
+        if "metadata-pill" in m.value and not m.value.startswith("<style>")
+    ]
+    assert len(pill_markdowns) >= 1
+    pill_text = pill_markdowns[0]
+    assert "<strong>Dataset</strong>: Olist Brazilian E-Commerce" in pill_text
+    assert "<strong>Volume</strong>: ~99,000 orders" in pill_text
+    assert "<strong>Period</strong>: 2016–2018" in pill_text
+    assert "Engine" not in pill_text
 
-    # ER Diagram button near header
+    # Header-level ER Diagram button is removed
     erd_btn = [b for b in at.button if b.label == "ER Diagram"]
-    assert len(erd_btn) >= 1
+    assert len(erd_btn) == 0
+
+    # Refresh button is present
+    refresh_btn = [b for b in at.button if b.key == "btn_refresh_schema"]
+    assert len(refresh_btn) == 1
+    assert refresh_btn[0].label == "Refresh"
+
+    # Three tabs in the correct order
+    assert len(at.tabs) == 3
+    assert at.tabs[0].label == "Base Tables (9)"
+    assert at.tabs[1].label == "Analytical Views (2)"
+    assert at.tabs[2].label == "ER Diagram"
 
     # Base table expanders exist
     expander_labels = [e.label for e in at.expander]
@@ -212,6 +238,122 @@ def test_database_explorer_metadata_and_structure(monkeypatch):
     # Preview buttons exist for tables and views
     preview_btns = [b for b in at.button if b.label == "Preview"]
     assert len(preview_btns) >= 11  # 9 base tables + 2 analytical views
+
+
+def test_base_table_schema_does_not_contain_key_constraint():
+    """Expanded Base Table schema tables do not display Key Constraint column."""
+    at = AppTest.from_file(str(EXPLORER_PATH), default_timeout=10)
+    at.run()
+    assert not at.exception
+
+    # Check dataframes in tab 0 (Base Tables)
+    tab_base = at.tabs[0]
+    assert len(tab_base.dataframe) >= 9
+    for df in tab_base.dataframe:
+        cols = list(df.value.columns)
+        assert "Key Constraint" not in cols
+        assert "Column" in cols
+        assert "Data Type" in cols
+        assert "Nullable" in cols
+
+
+def test_analytical_views_simplified_without_grain_or_warning():
+    """Analytical views do not display Grain, Warning, or Purpose in the UI."""
+    at = AppTest.from_file(str(EXPLORER_PATH), default_timeout=10)
+    at.run()
+    assert not at.exception
+
+    tab_views = at.tabs[1]
+    # No warning widgets in tab 1
+    assert len(tab_views.warning) == 0
+
+    # No Grain, Warning, or Purpose in captions
+    for cap in tab_views.caption:
+        assert "Grain:" not in cap.value
+        assert "Warning:" not in cap.value
+        assert "Purpose:" not in cap.value
+
+    # Notes remain preserved, Purpose is removed
+    captions_text = " ".join(cap.value for cap in tab_views.caption)
+    assert "Purpose" not in captions_text
+    assert "Notes" in captions_text
+
+
+def test_er_diagram_renders_in_third_tab():
+    """ER Diagram renders directly in Tab 3 with Graphviz chart and relationship table."""
+    at = AppTest.from_file(str(EXPLORER_PATH), default_timeout=10)
+    at.run()
+    assert not at.exception
+
+    tab_erd = at.tabs[2]
+    # Subheader & caption
+    subheaders = [s.value for s in tab_erd.subheader]
+    assert "Entity-Relationship Diagram (ERD)" in subheaders
+    assert any("relational topology" in c.value for c in tab_erd.caption)
+
+    # Graphviz chart is rendered directly in Tab 3
+    charts = at.get("graphviz_chart")
+    assert len(charts) == 1
+    assert "digraph Olist_ERD" in charts[0].spec
+
+    # Verified relationships table expander and dataframe
+    erd_expanders = [e.label for e in tab_erd.expander]
+    assert "Verified Relationships Reference Table" in erd_expanders
+    assert len(tab_erd.dataframe) == 1
+    rel_df = tab_erd.dataframe[0].value
+    assert "Relationship" in rel_df.columns
+    assert "Cardinality" in rel_df.columns
+
+
+def test_show_erd_dialog_renders_chart_directly():
+    """show_erd_dialog renders Graphviz spec with Olist_ERD."""
+    with patch("streamlit.graphviz_chart") as mock_chart, \
+         patch("streamlit.subheader"), \
+         patch("streamlit.caption"):
+        show_erd_dialog.__wrapped__()
+        assert mock_chart.called
+        spec = mock_chart.call_args[0][0]
+        assert "digraph Olist_ERD" in spec
+
+
+def test_refresh_button_invalidates_cache_and_preserves_session(monkeypatch):
+    """Clicking Refresh clears schema and row count caches without resetting agent session."""
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "secret123")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server-test-key")
+    at = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    at.session_state["authenticated"] = True
+    at.run()
+
+    # Pre-populate session state
+    session = at.session_state["agent_session"]
+    session.ui_messages.append({"role": "user", "content": "How many orders?"})
+
+    at.switch_page("views/database_explorer.py").run()
+    assert not at.exception
+
+    mock_schema_clear = MagicMock()
+    mock_counts_clear = MagicMock()
+
+    import views.analytics
+    views.analytics.load_database_schema.clear = mock_schema_clear
+    for mod in list(__import__("sys").modules.values()):
+        if mod and hasattr(mod, "get_table_row_counts") and hasattr(mod, "_handle_database_refresh"):
+            mod.get_table_row_counts.clear = mock_counts_clear
+
+    refresh_btn = [b for b in at.button if b.key == "btn_refresh_schema"][0]
+    refresh_btn.click().run()
+
+    assert not at.exception
+    assert mock_schema_clear.called
+    assert mock_counts_clear.called
+
+    # Verify session preservation
+    assert at.session_state["agent_session"] is session
+    assert len(session.ui_messages) == 1
+    assert session.ui_messages[0]["content"] == "How many orders?"
+
+    # Verify toast
+    assert any("refreshed" in t.value for t in at.toast)
 
 
 # ==============================================================================
@@ -254,6 +396,21 @@ def test_get_table_row_counts_returns_accurate_metrics():
     assert counts["customers"] == 99441
     assert counts["orders"] == 99441
     assert counts["products"] == 32951
+
+
+def test_preview_table_dialog_caption_format():
+    """Preview dialog captions show row counts without '• DuckDB Read-Only'."""
+    captions = []
+    with patch("streamlit.caption", side_effect=lambda txt: captions.append(txt)), \
+         patch("streamlit.dataframe"), \
+         patch("streamlit.subheader"):
+        preview_table_dialog.__wrapped__("customers", {"customers"}, total_rows=99441)
+        preview_table_dialog.__wrapped__("orders", {"orders"}, total_rows=None)
+
+    assert captions[0] == "Showing first 5 rows of 99,441 total rows"
+    assert "DuckDB Read-Only" not in captions[0]
+    assert captions[1] == "Showing first 5 rows"
+    assert "DuckDB Read-Only" not in captions[1]
 
 
 # ==============================================================================

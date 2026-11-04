@@ -8,7 +8,8 @@ integrating the model selector directly into the question input bar.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Set
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -17,7 +18,7 @@ from agent.config import DEFAULT_OPENAI_MODEL
 from agent import ui_session
 from data.prepare_data import DEFAULT_DB_PATH
 from tools.chart_registry import ChartNotFoundError, ChartRegistry
-from tools.sql_tool import get_database_schema
+from tools.sql_tool import db_connection, get_database_schema
 
 # ==============================================================================
 # Descriptive Metadata for Base Tables and Views
@@ -45,6 +46,25 @@ VIEW_DESCRIPTIONS: Dict[str, str] = {
 def load_database_schema(db_path: str) -> Dict[str, Any]:
     """Inspect and return the database schema using DuckDB metadata queries."""
     return get_database_schema(db_path)
+
+
+@st.cache_data(show_spinner=False)
+def get_table_row_counts(db_path: str, table_names: tuple[str, ...]) -> Dict[str, int]:
+    """Retrieve row counts for all given tables in a single cached pass."""
+    counts: Dict[str, int] = {}
+    try:
+        with db_connection(db_path) as con:
+            for tbl in table_names:
+                if re.fullmatch(r"^[a-zA-Z0-9_]+$", tbl):
+                    try:
+                        res = con.execute(f'SELECT count(*) FROM "{tbl}"').fetchone()
+                        if res and res[0] is not None:
+                            counts[tbl] = int(res[0])
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return counts
 
 
 def render_assistant_message(
@@ -109,14 +129,13 @@ def render_analytics_page() -> None:
         )
 
     # ==========================================================================
-    # Section B (Upper): Compact Dataset Explorer
+    # Section B (Upper): Compact Database Explorer
     # ==========================================================================
-    st.header("Dataset Explorer")
+    st.header("Analytics Workspace")
     st.markdown(
         """
         <div style="margin-bottom: 0.65rem;">
             <span class="metadata-pill"><strong>Dataset</strong>: Olist Brazilian E-Commerce</span>
-            <span class="metadata-pill"><strong>Engine</strong>: DuckDB (Read-Only)</span>
             <span class="metadata-pill"><strong>Volume</strong>: ~99,000 orders</span>
             <span class="metadata-pill"><strong>Period</strong>: 2016–2018</span>
         </div>
@@ -138,6 +157,10 @@ def render_analytics_page() -> None:
     if schema_error:
         st.warning(schema_error)
     else:
+        # Whitelist of authorized table and view identifiers
+        all_table_names: Set[str] = {t["name"] for t in base_tables} | {v["name"] for v in analytical_views}
+        row_counts = get_table_row_counts(str(DEFAULT_DB_PATH), tuple(sorted(all_table_names)))
+
         # Height-constrained container prevents schema expansion from displacing the chat panel
         with st.container(height=260, border=False):
             tab_tables, tab_views = st.tabs(
@@ -148,7 +171,9 @@ def render_analytics_page() -> None:
                     st.info("No base tables found in database.")
                 for tbl in base_tables:
                     tbl_name = tbl["name"]
-                    with st.expander(tbl_name, expanded=False):
+                    total_rows = row_counts.get(tbl_name)
+                    rows_str = f"{total_rows:,} rows" if total_rows is not None else "DuckDB table"
+                    with st.expander(f"{tbl_name} • {rows_str}", expanded=False):
                         desc = BASE_TABLE_DESCRIPTIONS.get(tbl_name)
                         if desc:
                             st.caption(desc)
@@ -156,10 +181,11 @@ def render_analytics_page() -> None:
                         if cols:
                             col_records = []
                             for c in cols:
+                                c_name = c["name"]
                                 nullable_val = c.get("nullable")
-                                nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
+                                nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "Unknown")
                                 rec = {
-                                    "Column": c["name"],
+                                    "Column": c_name,
                                     "Data Type": c["data_type"],
                                     "Nullable": nullable_str,
                                 }
@@ -175,22 +201,20 @@ def render_analytics_page() -> None:
                     st.info("No analytical views found in database.")
                 for vw in analytical_views:
                     vw_name = vw["name"]
-                    with st.expander(f"{vw_name} (Analytical View)", expanded=False):
-                        purpose = VIEW_DESCRIPTIONS.get(vw_name) or vw.get("purpose")
-                        if purpose:
-                            st.caption(f"**Purpose**: {purpose}")
-                        if vw.get("grain"):
-                            st.caption(f"**Grain**: {vw['grain']}")
-                        if vw.get("warning"):
-                            st.caption(f"**Warning**: {vw['warning']}")
+                    total_rows = row_counts.get(vw_name)
+                    rows_str = f"{total_rows:,} rows" if total_rows is not None else "DuckDB view"
+                    with st.expander(f"{vw_name} • {rows_str}", expanded=False):
+                        if vw.get("notes"):
+                            st.caption(f"**Notes**: {vw['notes']}")
                         cols = vw.get("columns", [])
                         if cols:
                             col_records = []
                             for c in cols:
+                                c_name = c["name"]
                                 nullable_val = c.get("nullable")
-                                nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "—")
+                                nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "Unknown")
                                 rec = {
-                                    "Column": c["name"],
+                                    "Column": c_name,
                                     "Data Type": c["data_type"],
                                     "Nullable": nullable_str,
                                 }
@@ -207,12 +231,12 @@ def render_analytics_page() -> None:
     with st.form("query_form", clear_on_submit=True):
         query_input = st.text_input(
             "Question",
-            placeholder="Ask a business analytics question...",
+            placeholder="Ask a business analytics question about this database...",
             label_visibility="collapsed",
             disabled=not bool(resolved_key),
             key="query_input",
         )
-        col_model, col_spacer, col_submit = st.columns([3, 4, 1.5])
+        col_model, col_spacer, col_submit = st.columns([2.4, 5.8, 1.8], vertical_alignment="center")
         with col_model:
             model_options = [DEFAULT_OPENAI_MODEL, "gpt-4o", "gpt-4o-mini", "o3-mini"]
             current_idx = model_options.index(current_model) if current_model in model_options else 0
@@ -220,6 +244,7 @@ def render_analytics_page() -> None:
                 "Model",
                 options=model_options,
                 index=current_idx,
+                format_func=lambda m: "GPT-4o" if m == "gpt-4o" else ("gpt-4o-mini" if m == "gpt-4o-mini" else ("o3-mini" if m == "o3-mini" else m)),
                 label_visibility="collapsed",
                 key="selected_model_dropdown",
                 help="Select the OpenAI model for reasoning and tool calling.",
@@ -230,6 +255,7 @@ def render_analytics_page() -> None:
             form_submitted = st.form_submit_button(
                 "Submit",
                 type="primary",
+                icon=":material/send:",
                 width="stretch",
                 disabled=not bool(resolved_key),
             )
@@ -245,9 +271,6 @@ def render_analytics_page() -> None:
         # Reconfigure session model on-the-fly if user altered dropdown
         if selected_model and session.configured_model != selected_model:
             ui_session.reconfigure_session(session, model=selected_model, api_key=resolved_key)
-        with st.spinner("Analyzing data and generating insights..."):
-            ui_session.execute_session_turn(session, active_prompt)
-        st.rerun()
 
     # ==========================================================================
     # Section C (Lower): Dedicated Scrollable Conversation History Panel
@@ -265,11 +288,20 @@ def render_analytics_page() -> None:
                         st.markdown(msg.get("content", ""))
                 else:
                     render_assistant_message(msg, session.chart_registry, show_debug=show_debug)
-        else:
+        elif not active_prompt:
             st.info(
                 "Welcome to the Data Analytics & Business Intelligence Agent. "
                 "Ask a business analytics question above, or select an example question from the sidebar to begin."
             )
+
+        # Show user question immediately in chat and display assistant loading indicator while generating insights
+        if active_prompt and session is not None:
+            with st.chat_message("user"):
+                st.markdown(active_prompt)
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing data and generating insights..."):
+                    ui_session.execute_session_turn(session, active_prompt)
+            st.rerun()
 
 
 if __name__ == "__main__":

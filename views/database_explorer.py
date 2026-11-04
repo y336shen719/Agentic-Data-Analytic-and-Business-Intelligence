@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from data.prepare_data import DEFAULT_DB_PATH
-from views.analytics import BASE_TABLE_DESCRIPTIONS, VIEW_DESCRIPTIONS, load_database_schema
+from views.analytics import BASE_TABLE_DESCRIPTIONS, get_table_row_counts, load_database_schema
 from tools.sql_tool import db_connection
 
 # ==============================================================================
@@ -150,24 +150,6 @@ VERIFIED_RELATIONSHIPS: List[Dict[str, str]] = [
 # Deterministic, Safe Data Access Helpers
 # ==============================================================================
 
-@st.cache_data(show_spinner=False)
-def get_table_row_counts(db_path: str, table_names: tuple[str, ...]) -> Dict[str, int]:
-    """Retrieve row counts for all given tables in a single cached pass."""
-    counts: Dict[str, int] = {}
-    try:
-        with db_connection(db_path) as con:
-            for tbl in table_names:
-                if re.fullmatch(r"^[a-zA-Z0-9_]+$", tbl):
-                    try:
-                        res = con.execute(f'SELECT count(*) FROM "{tbl}"').fetchone()
-                        if res and res[0] is not None:
-                            counts[tbl] = int(res[0])
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-    return counts
-
 
 def fetch_table_preview_rows(
     db_path: Union[str, Path],
@@ -200,111 +182,98 @@ def generate_erd_dot() -> str:
     graph [
         rankdir=LR,
         bgcolor="transparent",
-        nodesep=0.7,
-        ranksep=1.1,
-        fontname="Helvetica, Arial, sans-serif",
-        fontsize=10
+        size="11.8,5.2!",
+        ratio="compress",
+        nodesep=0.28,
+        ranksep=0.46,
+        concentrate=false,
+        overlap=false,
+        splines=spline,
+        fontname="Arial, Helvetica, sans-serif",
+        fontsize=10.5
     ];
     node [
         shape=none,
-        fontname="Helvetica, Arial, sans-serif",
-        fontsize=9,
-        fontcolor="#0f172a"
+        fontname="Arial, Helvetica, sans-serif",
+        fontsize=10.5,
+        fontcolor="#F3F4F6",
+        margin=0
     ];
     edge [
-        fontname="Helvetica, Arial, sans-serif",
-        fontsize=8,
-        color="#6366f1",
-        fontcolor="#4338ca",
-        penwidth=1.5
+        fontname="Arial, Helvetica, sans-serif",
+        fontsize=9.5,
+        color="#6366F1",
+        arrowhead="vee",
+        arrowsize=0.8,
+        penwidth=1.2
     ];
 
-    customers [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#3b82f6" align="center"><font color="#ffffff"><b>customers</b></font></td></tr>
-        <tr><td align="left">🔑 <b>customer_id</b> : VARCHAR (PK)</td></tr>
-        <tr><td align="left">customer_unique_id : VARCHAR</td></tr>
-        <tr><td align="left">customer_zip_code_prefix : VARCHAR</td></tr>
-        <tr><td align="left">customer_city : VARCHAR</td></tr>
-        <tr><td align="left">customer_state : VARCHAR</td></tr>
+    customers [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#1D4ED8" align="center"><font color="#EFF6FF"><b> customers </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">customer_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">zip_code_prefix&#160;&#160;</font></td></tr>
     </table>>];
 
-    orders [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#4f46e5" align="center"><font color="#ffffff"><b>orders</b></font></td></tr>
-        <tr><td align="left">🔑 <b>order_id</b> : VARCHAR (PK)</td></tr>
-        <tr><td align="left">🔗 customer_id : VARCHAR (FK)</td></tr>
-        <tr><td align="left">order_status : VARCHAR</td></tr>
-        <tr><td align="left">order_purchase_timestamp : TIMESTAMP</td></tr>
-        <tr><td align="left">order_delivered_customer_date : TIMESTAMP</td></tr>
+    orders [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#4338CA" align="center"><font color="#EEF2FF"><b> orders </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">order_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">customer_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"></td><td align="left"><font color="#CBD5E1">order_status&#160;&#160;</font></td></tr>
     </table>>];
 
-    order_items [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#6366f1" align="center"><font color="#ffffff"><b>order_items</b></font></td></tr>
-        <tr><td align="left">🔑 <b>order_id</b> : VARCHAR (PK, FK)</td></tr>
-        <tr><td align="left">🔑 <b>order_item_id</b> : INTEGER (PK)</td></tr>
-        <tr><td align="left">🔗 product_id : VARCHAR (FK)</td></tr>
-        <tr><td align="left">🔗 seller_id : VARCHAR (FK)</td></tr>
-        <tr><td align="left">price : DECIMAL(18,2)</td></tr>
-        <tr><td align="left">freight_value : DECIMAL(18,2)</td></tr>
+    order_items [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#5B21B6" align="center"><font color="#F5F3FF"><b> order_items </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">order_id, item_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">product_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">seller_id&#160;&#160;</font></td></tr>
     </table>>];
 
-    order_payments [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#0284c7" align="center"><font color="#ffffff"><b>order_payments</b></font></td></tr>
-        <tr><td align="left">🔑 <b>order_id</b> : VARCHAR (PK, FK)</td></tr>
-        <tr><td align="left">🔑 <b>payment_sequential</b> : INTEGER (PK)</td></tr>
-        <tr><td align="left">payment_type : VARCHAR</td></tr>
-        <tr><td align="left">payment_installments : INTEGER</td></tr>
-        <tr><td align="left">payment_value : DECIMAL(18,2)</td></tr>
+    order_payments [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#0369A1" align="center"><font color="#F0F9FF"><b> order_payments </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">order_id, seq&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"></td><td align="left"><font color="#CBD5E1">payment_type&#160;&#160;</font></td></tr>
     </table>>];
 
-    order_reviews [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#0891b2" align="center"><font color="#ffffff"><b>order_reviews</b></font></td></tr>
-        <tr><td align="left">🔑 <b>review_id</b> : VARCHAR (PK)</td></tr>
-        <tr><td align="left">🔑 <b>order_id</b> : VARCHAR (PK, FK)</td></tr>
-        <tr><td align="left">review_score : INTEGER</td></tr>
-        <tr><td align="left">review_creation_date : TIMESTAMP</td></tr>
+    order_reviews [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#0E7490" align="center"><font color="#ECFEFF"><b> order_reviews </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">review_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">order_id&#160;&#160;</font></td></tr>
     </table>>];
 
-    products [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#059669" align="center"><font color="#ffffff"><b>products</b></font></td></tr>
-        <tr><td align="left">🔑 <b>product_id</b> : VARCHAR (PK)</td></tr>
-        <tr><td align="left">🔗 product_category_name : VARCHAR (FK)</td></tr>
-        <tr><td align="left">product_weight_g : INTEGER</td></tr>
-        <tr><td align="left">product_length_cm : INTEGER</td></tr>
+    products [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#047857" align="center"><font color="#ECFDF5"><b> products </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">product_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">category_name&#160;&#160;</font></td></tr>
     </table>>];
 
-    category_translation [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#10b981" align="center"><font color="#ffffff"><b>category_translation</b></font></td></tr>
-        <tr><td align="left">🔑 <b>product_category_name</b> : VARCHAR (PK)</td></tr>
-        <tr><td align="left">product_category_name_english : VARCHAR</td></tr>
+    category_translation [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#0F766E" align="center"><font color="#F0FDFA"><b> category_translation </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">category_name&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"></td><td align="left"><font color="#CBD5E1">name_english&#160;&#160;</font></td></tr>
     </table>>];
 
-    sellers [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#d97706" align="center"><font color="#ffffff"><b>sellers</b></font></td></tr>
-        <tr><td align="left">🔑 <b>seller_id</b> : VARCHAR (PK)</td></tr>
-        <tr><td align="left">seller_zip_code_prefix : VARCHAR</td></tr>
-        <tr><td align="left">seller_city : VARCHAR</td></tr>
-        <tr><td align="left">seller_state : VARCHAR</td></tr>
+    sellers [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#B45309" align="center"><font color="#FFFBEB"><b> sellers </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">seller_id&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"><font color="#38BDF8"><b>FK</b></font></td><td align="left"><font color="#CBD5E1">zip_code_prefix&#160;&#160;</font></td></tr>
     </table>>];
 
-    geolocation [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#ffffff" style="rounded">
-        <tr><td bgcolor="#64748b" align="center"><font color="#ffffff"><b>geolocation</b></font></td></tr>
-        <tr><td align="left"><b>geolocation_zip_code_prefix</b> : VARCHAR</td></tr>
-        <tr><td align="left">geolocation_lat : DOUBLE</td></tr>
-        <tr><td align="left">geolocation_lng : DOUBLE</td></tr>
-        <tr><td align="left">geolocation_city : VARCHAR</td></tr>
-        <tr><td align="left">geolocation_state : VARCHAR</td></tr>
+    geolocation [label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="4" bgcolor="#111827" color="#374151">
+        <tr><td colspan="2" bgcolor="#334155" align="center"><font color="#F8FAFC"><b> geolocation </b></font></td></tr>
+        <tr><td align="center" width="26"><font color="#818CF8"><b>PK</b></font></td><td align="left"><font color="#E2E8F0">zip_code_prefix&#160;&#160;</font></td></tr>
+        <tr><td align="center" width="26"></td><td align="left"><font color="#CBD5E1">city, state&#160;&#160;</font></td></tr>
     </table>>];
 
     /* Relationships with verified cardinalities */
-    orders -> customers [label="N:1\\ncustomer_id", dir=back];
-    order_items -> orders [label="N:1\\norder_id", dir=back];
-    order_payments -> orders [label="N:1\\norder_id", dir=back];
-    order_reviews -> orders [label="N:1\\norder_id", dir=back];
-    order_items -> products [label="N:1\\nproduct_id", dir=back];
-    order_items -> sellers [label="N:1\\nseller_id", dir=back];
-    products -> category_translation [label="N:1\\ncategory_name", dir=back];
-    customers -> geolocation [label="N:N\\nzip_prefix", style="dashed", color="#94a3b8", fontcolor="#64748b", dir=none];
-    sellers -> geolocation [label="N:N\\nzip_prefix", style="dashed", color="#94a3b8", fontcolor="#64748b", dir=none];
+    orders -> customers [dir=back];
+    order_items -> orders [dir=back];
+    order_payments -> orders [dir=back];
+    order_reviews -> orders [dir=back];
+    order_items -> products [dir=back];
+    order_items -> sellers [dir=back];
+    products -> category_translation [dir=back];
+    customers -> geolocation [style="dashed", color="#475569", penwidth=1.0, dir=none, arrowhead=none];
+    sellers -> geolocation [style="dashed", color="#475569", penwidth=1.0, dir=none, arrowhead=none];
 }"""
 
 
@@ -321,9 +290,9 @@ def preview_table_dialog(
     """Display interactive modal preview containing the first 5 rows of a table."""
     st.subheader(f"Table Preview: {table_name}")
     if total_rows is not None:
-        st.caption(f"Showing first 5 rows of **{total_rows:,}** total rows • DuckDB Read-Only")
+        st.caption(f"Showing first 5 rows of {total_rows:,} total rows")
     else:
-        st.caption("Showing first 5 rows • DuckDB Read-Only")
+        st.caption("Showing first 5 rows")
 
     try:
         df = fetch_table_preview_rows(DEFAULT_DB_PATH, table_name, allowed_tables=allowed_tables)
@@ -332,29 +301,30 @@ def preview_table_dialog(
         st.error(f"Failed to fetch table preview: {exc}")
 
 
-@st.dialog("Entity-Relationship Diagram", width="large")
+@st.dialog("Entity-Relationship Diagram (ERD)", width="large")
 def show_erd_dialog() -> None:
-    """Display Entity-Relationship Diagram and verified relationships table."""
+    """Display Entity-Relationship Diagram in an interactive modal dialog."""
     st.subheader("Entity-Relationship Diagram (ERD)")
     st.caption(
         "Interactive relational topology of the 9 Olist base tables in DuckDB. "
-        "Solid lines denote verified referential integrity; dashed lines denote spatial mappings."
+        "Solid arrows denote referential integrity (N:1); dashed lines denote spatial mappings."
     )
-
     dot_str = generate_erd_dot()
     st.graphviz_chart(dot_str, width="stretch")
 
-    with st.expander("Verified Relationships Reference Table", expanded=True):
-        rel_records = []
-        for r in VERIFIED_RELATIONSHIPS:
-            rel_records.append({
-                "Relationship": f"{r['source_table']} → {r['target_table']}",
-                "Key Columns": f"{r['source_column']} = {r['target_column']}",
-                "Cardinality": r["cardinality"],
-                "Constraint Type": r["type"],
-                "Description": r["description"],
-            })
-        st.dataframe(rel_records, width="stretch", hide_index=True)
+
+def _handle_database_refresh() -> None:
+    """Invalidate cached schema and row counts to force fresh database inspection."""
+    load_database_schema.clear()
+    get_table_row_counts.clear()
+    try:
+        import sys
+        vde = sys.modules.get("views.database_explorer")
+        if vde and hasattr(vde, "get_table_row_counts") and vde.get_table_row_counts is not get_table_row_counts:
+            vde.get_table_row_counts.clear()
+    except Exception:
+        pass
+    st.session_state["_db_schema_refreshed"] = True
 
 
 # ==============================================================================
@@ -363,15 +333,8 @@ def show_erd_dialog() -> None:
 
 def render_database_explorer_page() -> None:
     """Render the dedicated Database Explorer interface."""
-    # Header layout with prominent but compact ER Diagram button
-    col_header, col_erd = st.columns([5, 1.4])
-    with col_header:
-        st.header("Database Explorer")
-        st.caption("Olist Brazilian E-Commerce | DuckDB")
-    with col_erd:
-        st.write("")  # Visual alignment spacer
-        if st.button("ER Diagram", key="btn_open_erd_modal", type="primary", width="stretch"):
-            show_erd_dialog()
+    # Header layout with metadata pills matching Analytics Workspace (Dataset, Volume, Period)
+    st.header("Database Explorer")
 
     # Load dynamic schema introspection
     schema_error: Optional[str] = None
@@ -395,22 +358,39 @@ def render_database_explorer_page() -> None:
     # Fetch cached row counts for all tables and views
     row_counts = get_table_row_counts(str(DEFAULT_DB_PATH), tuple(sorted(all_table_names)))
 
-    # Database overview metadata pills
-    st.markdown(
-        f"""
-        <div style="margin-bottom: 0.85rem;">
-            <span class="metadata-pill"><strong>Database Engine</strong>: DuckDB (Embedded)</span>
-            <span class="metadata-pill"><strong>Base Tables</strong>: {len(base_tables)}</span>
-            <span class="metadata-pill"><strong>Analytical Views</strong>: {len(analytical_views)}</span>
-            <span class="metadata-pill"><strong>Access Mode</strong>: Read-Only (Enforced)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Action toolbar: Metadata pills on the left, Refresh button positioned on the far right
+    col_pills, col_refresh = st.columns([0.84, 0.16], vertical_alignment="center")
+    with col_pills:
+        st.markdown(
+            """
+            <div style="margin-bottom: 0.35rem;">
+                <span class="metadata-pill"><strong>Dataset</strong>: Olist Brazilian E-Commerce</span>
+                <span class="metadata-pill"><strong>Volume</strong>: ~99,000 orders</span>
+                <span class="metadata-pill"><strong>Period</strong>: 2016–2018</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_refresh:
+        if st.button(
+            "Refresh",
+            key="btn_refresh_schema",
+            icon=":material/refresh:",
+            width="stretch",
+            on_click=_handle_database_refresh,
+        ):
+            if not st.session_state.get("_db_schema_refreshed"):
+                _handle_database_refresh()
+                st.rerun()
 
-    tab_base, tab_views = st.tabs(
-        [f"Base Tables ({len(base_tables)})", f"Analytical Views ({len(analytical_views)})"]
-    )
+    if st.session_state.pop("_db_schema_refreshed", False):
+        st.toast("Database schema and row counts refreshed.")
+
+    tab_base, tab_views, tab_erd = st.tabs([
+        f"Base Tables ({len(base_tables)})",
+        f"Analytical Views ({len(analytical_views)})",
+        "ER Diagram",
+    ])
 
     # ==========================================================================
     # Tab 1: Base Tables
@@ -433,31 +413,15 @@ def render_database_explorer_page() -> None:
                     cols = tbl.get("columns", [])
                     if cols:
                         col_records = []
-                        pks = TABLE_PRIMARY_KEYS.get(tbl_name, [])
-                        fks = TABLE_FOREIGN_KEYS.get(tbl_name, {})
-
                         for c in cols:
                             c_name = c["name"]
                             nullable_val = c.get("nullable")
                             nullable_str = "Yes" if nullable_val is True else ("No" if nullable_val is False else "Unknown")
 
-                            is_pk = c_name in pks
-                            fk_target = fks.get(c_name)
-
-                            if is_pk and fk_target:
-                                key_str = f"PK, FK → {fk_target}"
-                            elif is_pk:
-                                key_str = "PK"
-                            elif fk_target:
-                                key_str = f"FK → {fk_target}"
-                            else:
-                                key_str = "—"
-
                             rec = {
                                 "Column": c_name,
                                 "Data Type": c["data_type"],
                                 "Nullable": nullable_str,
-                                "Key Constraint": key_str,
                             }
                             if "description" in c:
                                 rec["Description"] = c["description"]
@@ -484,14 +448,7 @@ def render_database_explorer_page() -> None:
 
             col_exp, col_prev = st.columns([5.3, 1.1])
             with col_exp:
-                with st.expander(f"{vw_name} (Analytical View) • {rows_str}", expanded=False):
-                    purpose = VIEW_DESCRIPTIONS.get(vw_name) or vw.get("purpose")
-                    if purpose:
-                        st.caption(f"**Purpose**: {purpose}")
-                    if vw.get("grain"):
-                        st.caption(f"**Grain**: {vw['grain']}")
-                    if vw.get("warning"):
-                        st.warning(f"**Warning**: {vw['warning']}")
+                with st.expander(f"{vw_name} • {rows_str}", expanded=False):
                     if vw.get("notes"):
                         st.caption(f"**Notes**: {vw['notes']}")
 
@@ -518,6 +475,80 @@ def render_database_explorer_page() -> None:
             with col_prev:
                 if st.button("Preview", key=f"btn_prev_view_{vw_name}", width="stretch"):
                     preview_table_dialog(vw_name, allowed_tables=all_table_names, total_rows=total_rows)
+
+    # ==========================================================================
+    # Tab 3: ER Diagram
+    # ==========================================================================
+    with tab_erd:
+        st.subheader("Entity-Relationship Diagram (ERD)")
+        st.caption(
+            '<span class="erd-tab-caption">Interactive relational topology of the 9 Olist base tables in DuckDB. '
+            'Solid lines denote verified referential integrity; dashed lines denote spatial mappings.</span>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            """
+            <style>
+            /* Tab 3 ERD subheader & caption font reduction */
+            div[data-testid="stTabPanel"][id="2"] h3,
+            div[data-testid="stTabPanel"]:nth-of-type(3) h3,
+            div[data-testid="stTabPanel"][id="2"] [data-testid="stHeadingWithActionElements"] h3,
+            div[data-testid="stTabPanel"]:nth-of-type(3) [data-testid="stHeadingWithActionElements"] h3 {
+                font-size: 1.05rem !important;
+                font-weight: 600 !important;
+                margin-top: 0.15rem !important;
+                margin-bottom: 0.1rem !important;
+                color: var(--text-primary, #F9FAFB) !important;
+            }
+
+            div[data-testid="stTabPanel"][id="2"] [data-testid="stCaptionContainer"] p,
+            div[data-testid="stTabPanel"]:nth-of-type(3) [data-testid="stCaptionContainer"] p,
+            .erd-tab-caption {
+                font-size: 0.85rem !important;
+                color: #94A3B8 !important;
+                line-height: 1.45 !important;
+                margin-bottom: 0.4rem !important;
+            }
+
+            /* Graphviz chart container: professional blueprint canvas */
+            [data-testid="stGraphVizChart"], [data-testid="stGraphvizChart"], .stGraphVizChart {
+                background: radial-gradient(circle at 50% 35%, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.8) 100%), #0D111A !important;
+                border: 1px solid rgba(55, 65, 81, 0.85) !important;
+                border-radius: 10px !important;
+                box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.05) !important;
+                max-width: 1080px !important;
+                max-height: 540px !important;
+                margin: 0.35rem auto 0.85rem auto !important;
+            }
+            [data-testid="stGraphVizChart"] svg, [data-testid="stGraphvizChart"] svg, .stGraphVizChart svg {
+                max-height: 500px !important;
+                max-width: 100% !important;
+                width: auto !important;
+                height: auto !important;
+                object-fit: contain !important;
+                display: block !important;
+                margin: 0 auto !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        dot_str = generate_erd_dot()
+        st.graphviz_chart(dot_str, width="stretch")
+
+        with st.expander("Verified Relationships Reference Table", expanded=True):
+            rel_records = []
+            for r in VERIFIED_RELATIONSHIPS:
+                rel_records.append({
+                    "Relationship": f"{r['source_table']} → {r['target_table']}",
+                    "Key Columns": f"{r['source_column']} = {r['target_column']}",
+                    "Cardinality": r["cardinality"],
+                    "Constraint Type": r["type"],
+                    "Description": r["description"],
+                })
+            st.dataframe(rel_records, width="stretch", hide_index=True)
 
 
 if __name__ == "__main__":
