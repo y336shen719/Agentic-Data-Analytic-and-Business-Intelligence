@@ -45,6 +45,8 @@ APP_PATH = Path(__file__).parent.parent / "app.py"
 def test_missing_app_access_password_fails_closed(monkeypatch):
     """Criterion 4: If APP_ACCESS_PASSWORD is missing, application must fail closed with error."""
     monkeypatch.delenv("APP_ACCESS_PASSWORD", raising=False)
+    import streamlit.runtime.secrets as s
+    monkeypatch.setattr(s.secrets_singleton, "_secrets", {})
     at = AppTest.from_file(str(APP_PATH), default_timeout=10)
     at.run()
 
@@ -103,8 +105,8 @@ def test_correct_password_authenticates_and_unlocks(monkeypatch):
 
     assert not at.exception
     assert at.session_state.get("authenticated") is True
-    # Now full app is unlocked with Dataset Explorer as first header
-    assert at.header[0].value == "Dataset Explorer"
+    # Now full app is unlocked with Analytics Workspace as first header
+    assert at.header[0].value == "Analytics Workspace"
     assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
     assert len(at.sidebar.button) >= 5
 
@@ -204,17 +206,17 @@ def test_schema_explorer_rendered_in_ui(monkeypatch):
     at.run()
 
     assert not at.exception
-    # Check Dataset Explorer header
+    # Check Analytics Workspace header
     headers = [h.value for h in at.header]
-    assert "Dataset Explorer" in headers
+    assert "Analytics Workspace" in headers
     assert "Conversation History" in headers
 
     # Base table expanders and analytical view expanders present
     expander_labels = [e.label for e in at.expander]
-    assert "customers" in expander_labels
-    assert "orders" in expander_labels
-    assert "order_summary (Analytical View)" in expander_labels
-    assert "category_sales_summary (Analytical View)" in expander_labels
+    assert any("customers" in l for l in expander_labels)
+    assert any("orders" in l for l in expander_labels)
+    assert any("order_summary" in l for l in expander_labels)
+    assert any("category_sales_summary" in l for l in expander_labels)
 
 
 # ==============================================================================
@@ -293,7 +295,7 @@ def test_clean_branding_no_decorative_emojis(monkeypatch):
 
     # Redundant main title removed; main area has 0 titles
     assert len(at.main.title) == 0
-    assert at.header[0].value == "Dataset Explorer"
+    assert at.header[0].value == "Analytics Workspace"
     assert "📊" not in at.sidebar.title[0].value
     assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
 
@@ -393,9 +395,9 @@ def test_main_area_starts_with_dataset_explorer_without_redundant_title(monkeypa
 
     # Redundant main title is gone
     assert len(at.main.title) == 0
-    # First header is Dataset Explorer
+    # First header is Analytics Workspace
     assert len(at.header) >= 2
-    assert at.header[0].value == "Dataset Explorer"
+    assert at.header[0].value == "Analytics Workspace"
     assert at.header[1].value == "Conversation History"
     # Sidebar branding preserved
     assert at.sidebar.title[0].value == "Data Analytics & BI Agent"

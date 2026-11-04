@@ -582,7 +582,7 @@ def test_streamlit_app_startup_with_apptest(monkeypatch):
 
     assert not at.exception
     # Check header and sidebar branding (redundant main title removed)
-    assert at.header[0].value == "Dataset Explorer"
+    assert at.header[0].value == "Analytics Workspace"
     assert at.sidebar.title[0].value == "Data Analytics & BI Agent"
     # Check sidebar
     assert len(at.sidebar.button) >= 5  # Example questions + clear button + logout

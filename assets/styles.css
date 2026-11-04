@@ -1,56 +1,58 @@
 /* ==============================================================================
-   Data Analytics & Business Intelligence Agent — Enterprise SaaS Stylesheet
-   Modern, minimalist SaaS design inspired by Linear, Vercel, and modern BI dashboards.
+   Data Analytics & Business Intelligence Agent — Enterprise Dark SaaS Stylesheet
+   Design Specification: Coordinated Dark Surfaces, Purple/Violet Accent (#8B5CF6)
    ============================================================================== */
 
 :root {
-  /* Color Palette: Slate / Neutral with Indigo Accents */
-  --bg-app: #f8fafc;
-  --surface-card: #ffffff;
-  --surface-muted: #f1f5f9;
-  --surface-subtle: #f8fafc;
-  
-  --border-subtle: #e2e8f0;
-  --border-medium: #cbd5e1;
-  --border-focus: #6366f1;
-  
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
-  --text-on-accent: #ffffff;
-  
-  --accent-primary: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-active: #3730a3;
-  --accent-light: #eef2ff;
-  --accent-border: #c7d2fe;
+  /* Core Design Tokens */
+  --bg-app: #0E1117;                   /* App background */
+  --bg-sidebar: #171B24;               /* Sidebar background */
+  --bg-card: #212632;                  /* Card & surface background */
+  --bg-surface-elevated: #282E3D;      /* Elevated surface / hover */
+  --bg-surface-subtle: #131720;        /* Inset wells / code container */
 
-  --success-bg: #f0fdf4;
-  --success-text: #166534;
-  --success-border: #bbf7d0;
+  --accent-primary: #8B5CF6;           /* Primary accent (Violet/Purple) */
+  --accent-hover: #7C3AED;             /* Primary accent hover */
+  --accent-active: #6D28D9;            /* Primary accent active */
+  --accent-light: rgba(139, 92, 246, 0.15); /* Accent tint for selection */
+  --accent-border: rgba(139, 92, 246, 0.35);
 
-  --warning-bg: #fffbeb;
-  --warning-text: #92400e;
-  --warning-border: #fde68a;
+  --text-primary: #F3F4F6;             /* Primary text (WCAG AAA on dark) */
+  --text-secondary: #A1A1AA;           /* Secondary text (WCAG AA > 5:1) */
+  --text-muted: #71717A;               /* Muted text / captions */
+  --text-on-accent: #FFFFFF;           /* Text on primary buttons */
 
-  /* Typography */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --border-color: #353B49;             /* Standard component border */
+  --border-subtle: #242935;            /* Subtle card dividers */
+  --border-focus: #8B5CF6;             /* Focus border */
+  --focus-ring: rgba(139, 92, 246, 0.35);
 
-  /* Spacing & Radius */
+  --btn-primary-bg: #8B5CF6;
+  --btn-primary-text: #FFFFFF;
+  --btn-primary-hover: #7C3AED;
+
+  --btn-secondary-bg: #212632;
+  --btn-secondary-text: #F3F4F6;
+  --btn-secondary-border: #353B49;
+  --btn-secondary-hover-bg: #2A303F;
+  --btn-secondary-hover-border: #4B5563;
+
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.6);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 /* ==============================================================================
-   1. Typography & Global Polish
+   1. Typography & Global Application Shell
    ============================================================================== */
 
 html, body {
@@ -61,237 +63,867 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Restrained, crisp headers */
-h1, h2, h3, h4, h5, h6 {
+[data-testid="stAppViewContainer"],
+.stApp {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}
+
+[data-testid="stAppViewContainer"] > .main {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.block-container {
+  padding-top: 1.5rem;
+  padding-bottom: 2rem;
+}
+
+/* Headings in Main Content Area */
+h1, h2, h3, h4, h5, h6,
+[data-testid="stHeading"] * {
   font-family: var(--font-sans);
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.015em;
 }
 
-/* Focus indicator accessibility */
-*:focus-visible {
-  outline: 2px solid var(--border-focus) !important;
-  outline-offset: 1px !important;
+/* Conversation History header: slightly smaller font size */
+#conversation-history,
+h2[id*="conversation-history"],
+[data-testid="stHeading"]:has(#conversation-history) h2,
+[data-testid="stHeading"]:has([id*="conversation-history"]) * {
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
 }
 
-/* Reduce excessive top padding on main content area for clean SaaS layout */
-.block-container {
-  padding-top: 1.75rem !important;
-  padding-bottom: 2rem !important;
+/* Captions and Subtitles */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p,
+small {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* Page top-level subtitle directly beneath main header */
+.db-explorer-subtitle,
+div:has(> [data-testid="stHeading"]) + div [data-testid="stCaptionContainer"] p,
+div[data-testid="stHeading"]:has(h2) + div[data-testid="stCaptionContainer"] p {
+  font-size: 1.25rem !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.4 !important;
+  display: inline-block;
+}
+
+/* Accessible Focus Ring */
+*:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
 }
 
 /* ==============================================================================
-   2. Sidebar SaaS Layout
+   2. Sidebar and Navigation Styling
    ============================================================================== */
 
 [data-testid="stSidebar"] {
-  background-color: #fcfcfd;
-  border-right: 1px solid var(--border-subtle);
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
 }
 
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
   gap: 0.65rem;
 }
 
+/* Sidebar Brand Title */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* 3-layer rhombus / diamond brand icon in glowing violet gradient */
+[data-testid="stSidebar"] [data-testid="stHeading"]:has(#data-analytics-bi-agent) h1::before,
+[data-testid="stSidebar"] h1::before {
+  content: "";
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='26' height='26' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 2L2 7L12 12L22 7L12 2Z' fill='%23C4B5FD' fill-opacity='0.45' stroke='%23A78BFA' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M2 12L12 17L22 12' stroke='%238B5CF6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M2 17L12 22L22 17' stroke='%236D28D9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+  filter: drop-shadow(0 2px 6px rgba(139, 92, 246, 0.45));
+}
+
+/* Sidebar Brand Subtitle (Business Intelligence Copilot) */
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+  color: #94A3B8 !important;
+  font-size: 0.8rem !important;
+  margin-top: -0.25rem !important;
+  margin-bottom: 0.65rem !important;
+}
+
+/* Sidebar Page Links Navigation (Analytics Workspace & Database Explorer) */
+[data-testid="stSidebar"] .stPageLink {
+  margin-bottom: 0.3rem !important;
+}
+
+[data-testid="stSidebar"] .stPageLink a {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.65rem !important;
+  padding: 0.6rem 0.85rem !important;
+  border-radius: 10px !important;
+  text-decoration: none !important;
+  font-size: 0.9rem !important;
+  font-weight: 500 !important;
+  transition: all 0.15s ease-in-out !important;
+  border: 1px solid transparent !important;
+  color: #94A3B8 !important;
+  background-color: transparent !important;
+}
+
+/* Inactive nav item hover */
+[data-testid="stSidebar"] .stPageLink a:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #F1F5F9 !important;
+}
+
+[data-testid="stSidebar"] .stPageLink a:hover span,
+[data-testid="stSidebar"] .stPageLink a:hover p {
+  color: #F1F5F9 !important;
+}
+
+/* Active Nav Item: Purple Pill with Border */
+[data-testid="stSidebar"] .stPageLink a[aria-current="page"] {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.32) 0%, rgba(109, 40, 217, 0.36) 100%) !important;
+  border: 1px solid rgba(139, 92, 246, 0.55) !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.15) !important;
+}
+
+[data-testid="stSidebar"] .stPageLink a[aria-current="page"] span,
+[data-testid="stSidebar"] .stPageLink a[aria-current="page"] p {
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+
+[data-testid="stSidebar"] .stPageLink a:not([aria-current="page"]) span,
+[data-testid="stSidebar"] .stPageLink a:not([aria-current="page"]) p {
+  color: #94A3B8 !important;
+}
+
+/* Subtle separator below navigation */
+.sidebar-divider {
+  height: 1px;
+  background: rgba(55, 65, 81, 0.5);
+  margin: 0.85rem 0 0.5rem 0;
+}
+
 /* Sidebar Section Headers */
 [data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] h2,
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] h3 {
   font-size: 0.725rem !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.06em !important;
-  color: var(--text-muted) !important;
-  margin-top: 1rem !important;
-  margin-bottom: 0.25rem !important;
+  letter-spacing: 0.08em !important;
+  color: #64748B !important;
+  margin-top: 1.15rem !important;
+  margin-bottom: 0.45rem !important;
 }
 
-/* Sidebar Brand Title */
-[data-testid="stSidebar"] h1 {
-  font-size: 1.15rem !important;
-  font-weight: 700 !important;
-  color: var(--text-primary) !important;
-  letter-spacing: -0.02em !important;
-  margin-bottom: 0.25rem !important;
+/* Example Questions Cards with chevron arrow on right */
+[class*="st-key-example_questions_container"] .stButton > button {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  text-align: left !important;
+  padding: 0.65rem 0.85rem !important;
+  border-radius: 8px !important;
+  background-color: rgba(22, 27, 38, 0.75) !important;
+  border: 1px solid rgba(55, 65, 81, 0.6) !important;
+  color: #E2E8F0 !important;
+  font-size: 0.835rem !important;
+  line-height: 1.4 !important;
+  margin-bottom: 0.5rem !important;
+  box-shadow: var(--shadow-xs) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+[class*="st-key-example_questions_container"] .stButton > button p,
+[class*="st-key-example_questions_container"] .stButton > button span {
+  color: #E2E8F0 !important;
+  font-weight: 500 !important;
+  text-align: left !important;
+  flex: 1 1 auto !important;
+}
+
+[class*="st-key-example_questions_container"] .stButton > button::after {
+  content: "›" !important;
+  font-size: 1.35rem !important;
+  font-weight: 300 !important;
+  line-height: 1 !important;
+  color: #64748B !important;
+  margin-left: 0.5rem !important;
+  flex-shrink: 0 !important;
+  transition: color 0.15s ease-in-out, transform 0.15s ease-in-out !important;
+}
+
+[class*="st-key-example_questions_container"] .stButton > button:hover {
+  background-color: rgba(30, 38, 54, 0.95) !important;
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  color: #FFFFFF !important;
+}
+
+[class*="st-key-example_questions_container"] .stButton > button:hover p,
+[class*="st-key-example_questions_container"] .stButton > button:hover span {
+  color: #FFFFFF !important;
+}
+
+[class*="st-key-example_questions_container"] .stButton > button:hover::after {
+  color: #DDD6FE !important;
+  transform: translateX(2px) !important;
+}
+
+/* Session Management Buttons */
+[class*="st-key-session_management_container"] .stButton > button {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.6rem !important;
+  text-align: left !important;
+  padding: 0.6rem 0.85rem !important;
+  border-radius: 8px !important;
+  background-color: rgba(22, 27, 38, 0.75) !important;
+  border: 1px solid rgba(55, 65, 81, 0.6) !important;
+  color: #E2E8F0 !important;
+  font-size: 0.835rem !important;
+  margin-bottom: 0.45rem !important;
+  box-shadow: var(--shadow-xs) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+[class*="st-key-session_management_container"] .stButton > button p,
+[class*="st-key-session_management_container"] .stButton > button span {
+  color: #E2E8F0 !important;
+  font-weight: 500 !important;
+}
+
+[class*="st-key-session_management_container"] .stButton > button:hover {
+  background-color: rgba(30, 38, 54, 0.95) !important;
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  color: #FFFFFF !important;
+}
+
+[class*="st-key-session_management_container"] .stButton > button:hover p,
+[class*="st-key-session_management_container"] .stButton > button:hover span {
+  color: #FFFFFF !important;
+}
+
+/* Developer Settings Checkbox */
+[class*="st-key-developer_settings_container"] [data-testid="stCheckbox"] {
+  padding: 0.25rem 0.1rem !important;
+}
+
+[class*="st-key-developer_settings_container"] [data-testid="stCheckbox"] label,
+[class*="st-key-developer_settings_container"] [data-testid="stCheckbox"] label span,
+[class*="st-key-developer_settings_container"] [data-testid="stCheckbox"] label p {
+  color: #CBD5E1 !important;
+  font-size: 0.835rem !important;
+  font-weight: 500 !important;
+}
+
+/* Sidebar Checkboxes (Developer Settings) */
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label span,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label p {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Sidebar Expanders (Diagnostics) */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background-color: #1A1F2B;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] summary span,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+  background-color: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] p,
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] span {
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] code {
+  color: #DDD6FE;
+  background-color: var(--bg-surface-subtle);
+  border: 1px solid var(--border-color);
 }
 
 /* ==============================================================================
-   3. Buttons & Controls
+   3. Buttons & Action Controls
    ============================================================================== */
 
-/* Primary Button: Clean Indigo */
+/* Primary Button: Purple / Violet Accent */
 button[kind="primary"],
 .stButton > button[kind="primary"] {
-  background-color: var(--accent-primary) !important;
-  color: var(--text-on-accent) !important;
-  border: 1px solid var(--accent-primary) !important;
-  border-radius: var(--radius-md) !important;
-  font-weight: 500 !important;
-  font-size: 0.875rem !important;
-  padding: 0.45rem 1rem !important;
-  box-shadow: var(--shadow-xs) !important;
-  transition: all 0.15s ease-in-out !important;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--btn-primary-bg);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.45rem 1rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  transition: all 0.15s ease-in-out;
+}
+
+button[kind="primary"] p,
+button[kind="primary"] span,
+.stButton > button[kind="primary"] p,
+.stButton > button[kind="primary"] span {
+  color: var(--btn-primary-text);
+  font-weight: 600;
 }
 
 button[kind="primary"]:hover,
 .stButton > button[kind="primary"]:hover {
-  background-color: var(--accent-hover) !important;
-  border-color: var(--accent-hover) !important;
-  box-shadow: var(--shadow-sm) !important;
+  background-color: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+  box-shadow: var(--shadow-sm);
 }
 
 button[kind="primary"]:active,
 .stButton > button[kind="primary"]:active {
-  background-color: var(--accent-active) !important;
+  background-color: var(--accent-active);
 }
 
-/* Secondary Button: Clean Outlined */
-button[kind="secondary"],
+/* Secondary Button (Preview buttons, dialog close, utility) */
 .stButton > button:not([kind="primary"]) {
-  background-color: var(--surface-card) !important;
-  color: var(--text-secondary) !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: var(--radius-md) !important;
-  font-weight: 500 !important;
-  font-size: 0.85rem !important;
-  transition: all 0.15s ease-in-out !important;
+  background-color: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all 0.15s ease-in-out;
 }
 
-button[kind="secondary"]:hover,
+.stButton > button:not([kind="primary"]) p,
+.stButton > button:not([kind="primary"]) span {
+  color: var(--btn-secondary-text);
+  font-weight: 500;
+}
+
 .stButton > button:not([kind="primary"]):hover {
-  background-color: var(--surface-muted) !important;
-  border-color: var(--border-medium) !important;
-  color: var(--text-primary) !important;
+  background-color: var(--btn-secondary-hover-bg);
+  border-color: var(--btn-secondary-hover-border);
+  color: #FFFFFF;
 }
 
-/* Disabled button state */
+.stButton > button:not([kind="primary"]):hover p,
+.stButton > button:not([kind="primary"]):hover span {
+  color: #FFFFFF;
+}
+
+/* Disabled Button State */
 button:disabled,
 .stButton > button:disabled {
-  opacity: 0.55 !important;
-  cursor: not-allowed !important;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ==============================================================================
-   4. Form & Question Input Styling (Command Bar Look)
+   4. Unified AI Prompt Bar (Question Input & Integrated Model Selector)
    ============================================================================== */
 
+/* AI Form Card Container */
 [data-testid="stForm"] {
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: var(--radius-lg) !important;
-  background-color: var(--surface-card) !important;
-  box-shadow: var(--shadow-xs) !important;
-  padding: 0.75rem 1rem !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  border-radius: 12px;
+  background-color: #0d111d;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.6), 0 0 16px rgba(139, 92, 246, 0.1);
+  padding: 0.75rem 0.95rem 0.65rem 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 [data-testid="stForm"]:focus-within {
-  border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
+  border-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 4px 25px -2px rgba(0, 0, 0, 0.6), 0 0 20px rgba(139, 92, 246, 0.2);
 }
 
-/* Text Input inside form */
-[data-testid="stForm"] input[type="text"] {
-  border-radius: var(--radius-md) !important;
-  font-size: 0.925rem !important;
-  color: var(--text-primary) !important;
+/* Form Labels (if visible) */
+[data-testid="stForm"] label,
+[data-testid="stForm"] label p {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Enclosed boxed text input inside prompt form */
+[data-testid="stForm"] [data-testid="stTextInput"] {
+  margin-bottom: 0.4rem;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] div[data-baseweb="input"] {
+  border: 1px solid rgba(139, 92, 246, 0.35) !important;
+  border-radius: 8px !important;
+  background-color: #131726 !important;
+  padding: 0.15rem 0.5rem !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] div[data-baseweb="input"]:focus-within {
+  border-color: #8B5CF6 !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25) !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] input {
+  border: none !important;
+  background: transparent !important;
+  font-size: 0.92rem !important;
+  color: #F8FAFC !important;
+  box-shadow: none !important;
+  padding: 0.45rem 0.35rem !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] input::placeholder {
+  color: #94A3B8 !important;
+  opacity: 0.85 !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Bottom toolbar row inside form */
+[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+  align-items: center;
+  padding-top: 0.35rem;
+  border-top: none;
+  margin-top: 0.2rem;
+}
+
+/* Compact model selector in bottom left of prompt bar */
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] {
+  background-color: #151A29 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  min-height: 2.25rem !important;
+  height: 2.25rem !important;
+  font-size: 0.88rem !important;
+  padding: 0 0.65rem !important;
+  font-weight: 500 !important;
+  display: flex !important;
+  align-items: center !important;
+  transition: border-color 0.15s ease, background-color 0.15s ease !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"]::before {
+  content: "" !important;
+  display: inline-block !important;
+  width: 17px !important;
+  height: 17px !important;
+  margin-right: 8px !important;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M22.2819%209.8211a5.9847%205.9847%200%200%200-.5157-4.9108%206.0462%206.0462%200%200%200-6.5098-2.9A6.0651%206.0651%200%200%200%204.9807%204.1818a5.9847%205.9847%200%200%200-3.9977%202.9%206.0462%206.0462%200%200%200%20.7427%207.0966%205.98%205.98%200%200%200%20.511%204.9107%206.051%206.051%200%200%200%206.5146%202.9001A5.9847%205.9847%200%200%200%2013.2599%2024a6.0557%206.0557%200%200%200%205.7718-4.2058%205.9894%205.9894%200%200%200%203.9977-2.9001%206.0557%206.0557%200%200%200-.7475-7.0729zm-9.022%2012.6081a4.4755%204.4755%200%200%201-2.8764-1.0408l.1419-.0804%204.7783-2.7582a.7948%20.7948%200%200%200%20.3927-.6813v-6.7369l2.02%201.1683a.071%20.071%200%200%201%20.038.052v5.5826a4.5045%204.5045%200%200%201-4.4945%204.4947zm-9.6607-4.1254a4.4708%204.4708%200%200%201-.5346-3.0137l.142.0852%204.783%202.7582a.7712%20.7712%200%200%200%20.7806%200l5.8428-3.3685v2.3324a.0804%20.0804%200%200%201-.0332.0615L9.74%2019.9502a4.4992%204.4992%200%200%201-6.1408-1.6464zM2.3408%207.8956a4.485%204.485%200%200%201%202.3655-1.9728V11.6a.7664%20.7664%200%200%200%20.3879.6765l5.8144%203.3543-2.0201%201.1683a.0757%20.0757%200%200%201-.071%200l-4.8303-2.7866A4.504%204.504%200%200%201%202.3408%207.8956zm16.0993%203.8558L12.5973%208.3829l2.02-1.1683a.0757%20.0757%200%200%201%20.071%200l4.8303%202.7913a4.4944%204.4944%200%200%201-.6765%208.1042v-5.6772a.79%20.79%200%200%200-.3927-.6813zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759%20.7759%200%200%200-.7854%200L9.4074%209.2297V6.8974a.0662%20.0662%200%200%201%20.0284-.0615l4.8303-2.7866a4.4992%204.4992%200%200%201%206.6802%204.6617zM12.0001%2013.0645l-2.4-1.383%202.4-1.383%202.4%201.383-2.4%201.383z%22%20fill%3D%22%23E2E8F0%22%2F%3E%3C%2Fsvg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: contain !important;
+  flex-shrink: 0 !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"]:hover {
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  background-color: #1a2033 !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] * {
+  color: #E2E8F0 !important;
+  font-weight: 500 !important;
+  font-size: 0.88rem !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] svg {
+  fill: #94A3B8 !important;
+}
+
+/* Submit Button inside AI Prompt Bar */
+[data-testid="stForm"] button[kind="primary"],
+[data-testid="stForm"] button[data-testid="baseButton-primary"] {
+  background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%) !important;
+  border: 1px solid #7C3AED !important;
+  border-radius: 8px !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  font-size: 0.88rem !important;
+  padding: 0.45rem 1.25rem !important;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35) !important;
+  transition: all 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+}
+
+[data-testid="stForm"] button[kind="primary"] p,
+[data-testid="stForm"] button[kind="primary"] span,
+[data-testid="stForm"] button[data-testid="baseButton-primary"] p,
+[data-testid="stForm"] button[data-testid="baseButton-primary"] span {
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+
+[data-testid="stForm"] button[kind="primary"]:hover,
+[data-testid="stForm"] button[data-testid="baseButton-primary"]:hover {
+  background: linear-gradient(135deg, #9333EA 0%, #6D28D9 100%) !important;
+  border-color: #6D28D9 !important;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+[data-testid="stForm"] button[kind="primary"]:disabled,
+[data-testid="stForm"] button[data-testid="baseButton-primary"]:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* BaseWeb Select Dropdown Popover */
+div[data-baseweb="popover"] {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+div[data-baseweb="popover"] ul[role="listbox"] {
+  background-color: var(--bg-card);
+  padding: 0.25rem;
+}
+
+div[data-baseweb="popover"] li[role="option"] {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  transition: all 0.15s ease;
+}
+
+div[data-baseweb="popover"] li[role="option"]:hover,
+div[data-baseweb="popover"] li[role="option"][aria-selected="true"] {
+  background-color: var(--accent-primary);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+div[data-baseweb="popover"] li[role="option"] * {
+  color: inherit;
+}
+
+/* Access Gate Password Input */
+[data-testid="stForm"]:has(#app_access_password_input) [data-testid="stTextInput"] input {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg-sidebar);
+  color: var(--text-primary);
 }
 
 /* ==============================================================================
-   5. Dataset Explorer & Schema Tabs
+   5. Metadata Badges, Tabs & Table Expanders
    ============================================================================== */
 
-/* Compact dataset badges */
+/* Metadata Badges / Pills */
 .metadata-pill {
-  display: inline-block;
-  padding: 0.2rem 0.65rem;
-  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.75rem;
+  font-size: 0.775rem;
   font-weight: 500;
   border-radius: var(--radius-full);
-  background-color: var(--surface-muted);
+  background-color: var(--bg-sidebar);
   color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  margin-right: 0.4rem;
-  margin-bottom: 0.4rem;
+  border: 1px solid var(--border-color);
+  margin-right: 0.45rem;
+  margin-bottom: 0.45rem;
+  box-shadow: var(--shadow-xs);
 }
 
 .metadata-pill strong {
   color: var(--text-primary);
+  margin-right: 0.3rem;
 }
 
-/* Schema Expanders */
-[data-testid="stExpander"] {
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: var(--radius-md) !important;
-  background-color: var(--surface-card) !important;
-  margin-bottom: 0.45rem !important;
-  overflow: hidden !important;
+/* Database Explorer toolbar spacer */
+.db-explorer-toolbar-spacer {
+  height: 0.5rem;
 }
 
-[data-testid="stExpander"] summary {
-  font-size: 0.85rem !important;
-  font-weight: 500 !important;
-  color: var(--text-primary) !important;
-  padding: 0.5rem 0.75rem !important;
-  background-color: #fafbfc !important;
-  transition: background-color 0.15s ease !important;
+/* Streamlit Tabs */
+[data-testid="stTabs"] {
+  border-bottom: 1px solid var(--border-color);
 }
 
-[data-testid="stExpander"] summary:hover {
-  background-color: var(--surface-muted) !important;
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  background-color: transparent;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
-/* Tabs */
 [data-testid="stTabs"] button[role="tab"] {
-  font-size: 0.85rem !important;
-  font-weight: 500 !important;
-  color: var(--text-secondary) !important;
-  padding: 0.5rem 1rem !important;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 0.55rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+[data-testid="stTabs"] button[role="tab"] p {
+  color: inherit;
+  font-weight: inherit;
+}
+
+[data-testid="stTabs"] button[role="tab"]:hover {
+  color: var(--text-primary);
+  border-bottom-color: var(--border-color);
 }
 
 [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-  color: var(--accent-primary) !important;
-  font-weight: 600 !important;
+  color: var(--accent-primary);
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent-primary);
+}
+
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p {
+  color: var(--accent-primary);
+}
+
+/* Schema & View Table Expanders */
+[data-testid="stExpander"] {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  margin-bottom: 0.45rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+[data-testid="stExpander"]:hover {
+  border-color: #4B5563;
+}
+
+[data-testid="stExpander"] summary {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 0.55rem 0.85rem;
+  background-color: #1A1F2B;
+  transition: background-color 0.15s ease;
+}
+
+[data-testid="stExpander"] summary:hover {
+  background-color: var(--bg-surface-elevated);
+}
+
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+[data-testid="stExpander"] summary svg {
+  fill: var(--text-secondary);
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border-top: 1px solid var(--border-color);
+  padding: 0.75rem 0.85rem;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] p,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] span {
+  color: var(--text-secondary);
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] [data-testid="stCaptionContainer"] p,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] .stCaption {
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] strong {
+  color: var(--text-primary);
+}
+
+/* Preview button alignment next to expanders */
+div[data-testid="stHorizontalBlock"]:has([data-testid="stExpander"]) .stButton > button {
+  height: 2.45rem;
+  margin-top: 0.1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 /* ==============================================================================
-   6. Dedicated Scrollable Conversation History Panel
+   6. Dedicated Conversation History & Chat Messages
    ============================================================================== */
 
 /* Scrollable Container with border */
 [data-testid="stVerticalBlockBorderWrapper"] {
-  border-color: var(--border-subtle) !important;
-  border-radius: var(--radius-lg) !important;
-  background-color: var(--surface-card) !important;
-  box-shadow: var(--shadow-xs) !important;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-app);
+  box-shadow: var(--shadow-xs);
 }
 
 /* Chat Messages */
 [data-testid="stChatMessage"] {
-  padding: 0.85rem 1.15rem !important;
-  border-radius: var(--radius-md) !important;
-  margin-bottom: 0.75rem !important;
-  font-size: 0.9rem !important;
-  line-height: 1.55 !important;
+  padding: 0.85rem 1.15rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 
-/* User Message Bubble: Subtle Muted Background */
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-  background-color: var(--surface-muted) !important;
-  border: 1px solid var(--border-subtle) !important;
+/* User Message Bubble */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]),
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
-/* Assistant Message Bubble: Clean White Surface */
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
-  background-color: var(--surface-card) !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-left: 3px solid var(--accent-primary) !important;
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) span,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) strong,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) p,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) span,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) strong {
+  color: var(--text-primary);
 }
 
-/* Code and Table overflow within chat */
-[data-testid="stChatMessage"] pre,
+/* Assistant Message Bubble with Purple Left Accent */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]),
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
+  background-color: rgba(33, 38, 50, 0.75);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent-primary);
+}
+
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) span,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) li,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) strong,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) p,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) span,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) li,
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) strong {
+  color: var(--text-primary);
+}
+
+/* Harmonious Chat Avatars: Soft dark-mode indigo for user and violet for assistant */
+[data-testid="stChatMessageAvatarUser"],
+[data-testid="chatAvatarIcon-user"],
+[data-testid="stChatMessage"] [data-testid*="AvatarUser"],
+[data-testid="stChatMessage"] [data-testid*="-user"] {
+  background: rgba(99, 102, 241, 0.18) !important;
+  background-color: rgba(99, 102, 241, 0.18) !important;
+  border: 1px solid rgba(99, 102, 241, 0.35) !important;
+  border-radius: 8px !important;
+  color: #C7D2FE !important;
+}
+
+[data-testid="stChatMessageAvatarUser"] svg,
+[data-testid="stChatMessageAvatarUser"] span,
+[data-testid="chatAvatarIcon-user"] svg,
+[data-testid="chatAvatarIcon-user"] span,
+[data-testid="stChatMessage"] [data-testid*="AvatarUser"] *,
+[data-testid="stChatMessage"] [data-testid*="-user"] * {
+  color: #C7D2FE !important;
+  fill: #C7D2FE !important;
+}
+
+[data-testid="stChatMessageAvatarAssistant"],
+[data-testid="chatAvatarIcon-assistant"],
+[data-testid="stChatMessage"] [data-testid*="AvatarAssistant"],
+[data-testid="stChatMessage"] [data-testid*="-assistant"] {
+  background: rgba(139, 92, 246, 0.22) !important;
+  background-color: rgba(139, 92, 246, 0.22) !important;
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  border-radius: 8px !important;
+  color: #DDD6FE !important;
+}
+
+[data-testid="stChatMessageAvatarAssistant"] svg,
+[data-testid="stChatMessageAvatarAssistant"] span,
+[data-testid="chatAvatarIcon-assistant"] svg,
+[data-testid="chatAvatarIcon-assistant"] span,
+[data-testid="stChatMessage"] [data-testid*="AvatarAssistant"] *,
+[data-testid="stChatMessage"] [data-testid*="-assistant"] * {
+  color: #DDD6FE !important;
+  fill: #DDD6FE !important;
+}
+
+/* Inline Code & Code Blocks inside chat messages */
 [data-testid="stChatMessage"] code {
-  font-family: var(--font-mono) !important;
-  border-radius: var(--radius-sm) !important;
+  font-family: var(--font-mono);
+  color: #DDD6FE;
+  background-color: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.35rem;
+}
+
+[data-testid="stChatMessage"] pre {
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+[data-testid="stChatMessage"] pre code {
+  color: #E4E4E7;
+  background-color: transparent;
+  border: none;
+}
+
+/* Tool execution expander inside assistant messages */
+[data-testid="stChatMessage"] [data-testid="stExpander"] {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
 }
 
 /* Custom Sleek Scrollbar */
@@ -305,53 +937,216 @@ button:disabled,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border-color);
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #4B5563;
 }
 
 /* ==============================================================================
-   7. Login Screen (Centered SaaS Card)
+   7. Modal Dialogs, Table Previews & ER Diagram
    ============================================================================== */
 
-.login-container {
-  max-width: 420px;
-  margin: 3.5rem auto 0 auto;
-  padding: 2.25rem;
-  background-color: var(--surface-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  text-align: left;
+/* Modal Root Wrapper: Ensure backdrop wrapper is transparent without borders */
+div[data-baseweb="modal"],
+div[data-testid="stDialog"]:not([role="dialog"]) {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
-.login-container h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-bottom: 0.35rem;
+/* Modal Backdrop Layer: Semi-transparent frosted glass so background stays faintly visible */
+div[data-baseweb="modal"] > div,
+div[data-testid="stDialog"] > div,
+div[data-baseweb="backdrop"] {
+  background-color: rgba(11, 15, 25, 0.55) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Modal Dialog Window Card */
+div[data-baseweb="modal"] div[role="dialog"],
+div[data-testid="stDialog"][role="dialog"],
+div[data-testid="stDialog"] div[role="dialog"] {
+  background-color: #171B24 !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-lg) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+}
+
+div[data-testid="stDialog"] header,
+div[data-baseweb="modal"] header {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  padding-bottom: 0.5rem;
+}
+
+div[data-testid="stDialog"] header h2,
+div[data-testid="stDialog"] header [data-testid="stHeading"],
+div[data-testid="stDialog"] h2,
+div[data-testid="stDialog"] h3,
+div[data-baseweb="modal"] h2,
+div[data-baseweb="modal"] h3 {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+div[data-testid="stDialog"] button[aria-label="Close"],
+div[data-baseweb="modal"] button[aria-label="Close"],
+div[data-testid="stDialog"] header button {
+  background: transparent !important;
+  border: none !important;
+}
+
+div[data-testid="stDialog"] button[aria-label="Close"] svg,
+div[data-baseweb="modal"] button[aria-label="Close"] svg,
+div[data-testid="stDialog"] header button svg {
+  fill: var(--text-secondary);
+}
+
+div[data-testid="stDialog"] button[aria-label="Close"]:hover svg,
+div[data-baseweb="modal"] button[aria-label="Close"]:hover svg,
+div[data-testid="stDialog"] header button:hover svg {
+  fill: var(--text-primary);
+}
+
+div[data-testid="stDialog"] p,
+div[data-testid="stDialog"] span,
+div[data-baseweb="modal"] p,
+div[data-baseweb="modal"] span {
+  color: var(--text-secondary);
+}
+
+div[data-testid="stDialog"] strong,
+div[data-baseweb="modal"] strong {
   color: var(--text-primary);
 }
 
-.login-container p {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  margin-bottom: 1.25rem;
+div[data-testid="stDialog"] [data-testid="stCaptionContainer"] p,
+div[data-baseweb="modal"] [data-testid="stCaptionContainer"] p {
+  color: var(--text-secondary);
+}
+
+/* Tab 3 ERD subheader & caption typography */
+div[data-testid="stTabPanel"][id="2"] h3,
+div[data-testid="stTabPanel"]:nth-of-type(3) h3,
+div[data-testid="stTabPanel"][id="2"] [data-testid="stHeadingWithActionElements"] h3,
+div[data-testid="stTabPanel"]:nth-of-type(3) [data-testid="stHeadingWithActionElements"] h3 {
+  font-size: 1.05rem !important;
+  font-weight: 600 !important;
+  margin-top: 0.15rem !important;
+  margin-bottom: 0.1rem !important;
+  color: var(--text-primary, #F9FAFB) !important;
+}
+
+div[data-testid="stTabPanel"][id="2"] [data-testid="stCaptionContainer"] p,
+div[data-testid="stTabPanel"]:nth-of-type(3) [data-testid="stCaptionContainer"] p,
+.erd-tab-caption {
+  font-size: 0.85rem !important;
+  color: #94A3B8 !important;
+  line-height: 1.45 !important;
+  margin-bottom: 0.4rem !important;
+}
+
+/* Graphviz ERD Chart Container */
+[data-testid="stGraphVizChart"],
+[data-testid="stGraphvizChart"],
+.stGraphVizChart,
+div[data-testid*="GraphViz" i],
+div[data-testid*="graphviz" i] {
+  background: radial-gradient(circle at 50% 35%, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.8) 100%), #0D111A;
+  border: 1px solid rgba(55, 65, 81, 0.85);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.35rem auto 0.85rem auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 1080px !important;
+  max-height: 540px !important;
+  width: 100% !important;
+}
+
+[data-testid="stGraphVizChart"] svg,
+[data-testid="stGraphvizChart"] svg,
+.stGraphVizChart svg,
+div[data-testid*="GraphViz" i] svg,
+div[data-testid*="graphviz" i] svg {
+  max-width: 100% !important;
+  max-height: 500px !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  margin: 0 auto !important;
+  display: block !important;
+}
+
+/* Graphviz SVG Text: Clean sans-serif matching Graphviz engine */
+[data-testid="stGraphVizChart"] svg text,
+[data-testid="stGraphvizChart"] svg text,
+.stGraphVizChart svg text {
+  fill: var(--text-primary);
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+/* Preserve white text on header banners */
+[data-testid="stGraphVizChart"] svg text[fill="#ffffff"],
+[data-testid="stGraphvizChart"] svg text[fill="#ffffff"],
+.stGraphVizChart svg text[fill="#ffffff"] {
+  fill: #FFFFFF !important;
+  font-weight: 600;
 }
 
 /* ==============================================================================
-   8. Responsive Layout Adjustments
+   8. Dataframes, Alerts & Plotly Charts
+   ============================================================================== */
+
+[data-testid="stDataFrame"] {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+[data-testid="stAlert"] {
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+}
+
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] span {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+[data-testid="stPlotlyChart"] {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.5rem;
+}
+
+/* ==============================================================================
+   9. Responsive Layout Adjustments
    ============================================================================== */
 
 @media (max-width: 768px) {
-  .login-container {
-    margin-top: 1.5rem;
-    padding: 1.5rem;
+  .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1.5rem;
   }
-  
+
   [data-testid="stForm"] {
-    padding: 0.5rem 0.75rem !important;
+    padding: 0.65rem 0.75rem;
   }
 }
