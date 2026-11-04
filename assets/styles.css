@@ -1,125 +1,223 @@
 /* ==============================================================================
    Data Analytics & Business Intelligence Agent — Enterprise SaaS Stylesheet
-   Modern, minimalist SaaS design inspired by Linear, Vercel, and modern BI dashboards.
+   Focused UI Polish Pass: Semantic Color Tokens, Surface Contrast & Readability.
    ============================================================================== */
 
 :root {
-  /* Color Palette: Slate / Neutral with Indigo Accents */
-  --bg-app: #f8fafc;
-  --surface-card: #ffffff;
-  --surface-muted: #f1f5f9;
-  --surface-subtle: #f8fafc;
-  
-  --border-subtle: #e2e8f0;
-  --border-medium: #cbd5e1;
-  --border-focus: #6366f1;
-  
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
-  --text-on-accent: #ffffff;
-  
-  --accent-primary: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-active: #3730a3;
-  --accent-light: #eef2ff;
-  --accent-border: #c7d2fe;
+  /* ----------------------------------------------------------------------------
+     1. Surface Tokens
+     ---------------------------------------------------------------------------- */
+  --bg-app-dark: #0b0f19;              /* Deep obsidian slate for main dark workspace */
+  --surface-dark-card: #131b2e;        /* Elevated dark card container */
+  --surface-dark-muted: #1e293b;       /* Muted dark surface for badges, wells, bubbles */
+  --surface-dark-subtle: #0f172a;      /* Subtle dark surface for code blocks */
 
-  --success-bg: #f0fdf4;
-  --success-text: #166534;
-  --success-border: #bbf7d0;
+  --bg-sidebar-light: #f8fafc;         /* Crisp, clean off-white sidebar background */
+  --surface-light-card: #ffffff;       /* Pure white light card surface */
+  --surface-light-muted: #f1f5f9;      /* Light gray muted surface for hover/wells */
+  --surface-light-subtle: #f8fafc;
 
-  --warning-bg: #fffbeb;
-  --warning-text: #92400e;
-  --warning-border: #fde68a;
+  /* ----------------------------------------------------------------------------
+     2. Border Tokens
+     ---------------------------------------------------------------------------- */
+  --border-dark-surface: #2d3b55;      /* Crisp slate border on dark surface */
+  --border-dark-subtle: #1e293b;       /* Subtle dark divider */
+  --border-dark-strong: #475569;       /* High-contrast border on dark */
 
-  /* Typography */
+  --border-light-surface: #e2e8f0;     /* Subtle border on light sidebar */
+  --border-light-medium: #cbd5e1;      /* Standard border on light sidebar */
+  --border-light-strong: #94a3b8;      /* High-contrast border on light */
+
+  --border-focus: #6366f1;             /* Modern indigo focus ring */
+  --focus-ring: rgba(99, 102, 241, 0.35);
+
+  /* ----------------------------------------------------------------------------
+     3. Semantic Typography Tokens (Dark Surface vs. Light Surface)
+     ---------------------------------------------------------------------------- */
+  /* Main Dark Content Area */
+  --text-primary-dark-surface: #f8fafc;       /* Pure clean off-white (WCAG AAA) */
+  --text-secondary-dark-surface: #cbd5e1;     /* Slate-300, readable body / secondary */
+  --text-muted-dark-surface: #94a3b8;         /* Slate-400, readable captions / labels */
+  --text-accent-dark-surface: #a5b4fc;        /* Light indigo accent on dark */
+
+  /* Light Sidebar & Light Surfaces */
+  --text-primary-light-surface: #0f172a;      /* Slate-900, crisp near-black (WCAG AAA) */
+  --text-secondary-light-surface: #334155;    /* Slate-700, readable secondary */
+  --text-muted-light-surface: #64748b;        /* Slate-500, readable captions */
+  --text-accent-light-surface: #4338ca;       /* Deep indigo accent on light */
+
+  /* ----------------------------------------------------------------------------
+     4. Accent & Brand Tokens
+     ---------------------------------------------------------------------------- */
+  --accent-primary: #4f46e5;                  /* Indigo 600 */
+  --accent-hover: #4338ca;                    /* Indigo 700 */
+  --accent-active: #3730a3;                   /* Indigo 800 */
+  --accent-light: #eef2ff;                    /* Indigo 50 (subtle tint for light selection) */
+  --accent-border: #c7d2fe;                   /* Indigo 200 */
+  --text-on-accent: #ffffff;                  /* White on primary buttons */
+
+  /* ----------------------------------------------------------------------------
+     5. Button Foreground / Background Tokens
+     ---------------------------------------------------------------------------- */
+  --btn-primary-bg: #4f46e5;
+  --btn-primary-text: #ffffff;
+  --btn-primary-border: #4f46e5;
+  --btn-primary-hover-bg: #4338ca;
+
+  --btn-secondary-dark-bg: #1e293b;
+  --btn-secondary-dark-text: #f8fafc;
+  --btn-secondary-dark-border: #334155;
+  --btn-secondary-dark-hover-bg: #334155;
+  --btn-secondary-dark-hover-border: #475569;
+
+  --btn-secondary-light-bg: #ffffff;
+  --btn-secondary-light-text: #0f172a;
+  --btn-secondary-light-border: #cbd5e1;
+  --btn-secondary-light-hover-bg: #f1f5f9;
+
+  /* ----------------------------------------------------------------------------
+     6. State Tokens
+     ---------------------------------------------------------------------------- */
+  --disabled-opacity: 0.55;
+
+  /* ----------------------------------------------------------------------------
+     7. Status & Feedback Tokens
+     ---------------------------------------------------------------------------- */
+  --status-success-bg: rgba(22, 101, 52, 0.2);
+  --status-success-text: #4ade80;
+  --status-success-border: rgba(74, 222, 128, 0.4);
+
+  --status-warning-bg: rgba(180, 83, 9, 0.2);
+  --status-warning-text: #fbbf24;
+  --status-warning-border: rgba(251, 191, 36, 0.4);
+
+  --status-error-bg: rgba(185, 28, 28, 0.2);
+  --status-error-text: #f87171;
+  --status-error-border: rgba(248, 113, 113, 0.4);
+
+  --status-info-bg: rgba(30, 58, 138, 0.2);
+  --status-info-text: #60a5fa;
+  --status-info-border: rgba(96, 165, 250, 0.4);
+
+  /* ----------------------------------------------------------------------------
+     8. Typography, Spacing & Shadows
+     ---------------------------------------------------------------------------- */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-  /* Spacing & Radius */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.12), 0 1px 2px -1px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.16), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.25), 0 4px 6px -4px rgba(0, 0, 0, 0.15);
 }
 
 /* ==============================================================================
-   1. Typography & Global Polish
+   1. Typography & Global Application Shell
    ============================================================================== */
 
 html, body {
   font-family: var(--font-sans);
-  color: var(--text-primary);
-  background-color: var(--bg-app);
+  color: var(--text-primary-dark-surface);
+  background-color: var(--bg-app-dark);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Restrained, crisp headers */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.015em;
+[data-testid="stAppViewContainer"],
+.stApp {
+  background-color: var(--bg-app-dark) !important;
+  color: var(--text-primary-dark-surface) !important;
 }
 
-/* Focus indicator accessibility */
-*:focus-visible {
-  outline: 2px solid var(--border-focus) !important;
-  outline-offset: 1px !important;
+/* Main dark container layout */
+[data-testid="stAppViewContainer"] > .main {
+  background-color: var(--bg-app-dark) !important;
+  color: var(--text-primary-dark-surface) !important;
 }
 
-/* Reduce excessive top padding on main content area for clean SaaS layout */
 .block-container {
   padding-top: 1.5rem !important;
   padding-bottom: 2rem !important;
 }
 
+/* Headings in Main Dark Area */
+[data-testid="stAppViewContainer"] .main h1,
+[data-testid="stAppViewContainer"] .main h2,
+[data-testid="stAppViewContainer"] .main h3,
+[data-testid="stAppViewContainer"] .main h4,
+[data-testid="stAppViewContainer"] .main h5,
+[data-testid="stAppViewContainer"] .main h6,
+[data-testid="stAppViewContainer"] .main [data-testid="stHeading"] * {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--text-primary-dark-surface) !important;
+  letter-spacing: -0.015em;
+}
+
+/* Subtitle, Captions & Paragraphs in Main Dark Area */
+[data-testid="stAppViewContainer"] .main [data-testid="stCaptionContainer"],
+[data-testid="stAppViewContainer"] .main [data-testid="stCaptionContainer"] p,
+[data-testid="stAppViewContainer"] .main small {
+  color: var(--text-muted-dark-surface) !important;
+  font-size: 0.85rem !important;
+}
+
+[data-testid="stAppViewContainer"] .main p {
+  color: var(--text-secondary-dark-surface);
+}
+
+/* Accessible Focus Visible Indicator */
+*:focus-visible {
+  outline: 2px solid var(--border-focus) !important;
+  outline-offset: 1px !important;
+}
+
 /* ==============================================================================
-   2. Sidebar SaaS Layout & Multipage Navigation
+   2. Light Sidebar SaaS Styling
    ============================================================================== */
 
 [data-testid="stSidebar"] {
-  background-color: #fcfcfd;
-  border-right: 1px solid var(--border-subtle);
+  background-color: var(--bg-sidebar-light) !important;
+  border-right: 1px solid var(--border-light-surface) !important;
 }
 
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
   gap: 0.65rem;
 }
 
+/* Sidebar Brand Title */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] h1 {
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
+  color: var(--text-primary-light-surface) !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 0.25rem !important;
+}
+
 /* Sidebar Section Headers */
 [data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] h2,
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] h3 {
   font-size: 0.725rem !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.06em !important;
-  color: var(--text-muted) !important;
+  color: var(--text-muted-light-surface) !important;
   margin-top: 0.9rem !important;
-  margin-bottom: 0.25rem !important;
-}
-
-/* Sidebar Brand Title */
-[data-testid="stSidebar"] h1 {
-  font-size: 1.15rem !important;
-  font-weight: 700 !important;
-  color: var(--text-primary) !important;
-  letter-spacing: -0.02em !important;
   margin-bottom: 0.25rem !important;
 }
 
 /* Streamlit Native Navigation Links in Sidebar */
 [data-testid="stSidebarNav"] {
   padding-bottom: 0.5rem !important;
-  border-bottom: 1px solid var(--border-subtle) !important;
+  border-bottom: 1px solid var(--border-light-surface) !important;
   margin-bottom: 0.75rem !important;
 }
 
@@ -127,48 +225,150 @@ h1, h2, h3, h4, h5, h6 {
   gap: 0.25rem !important;
 }
 
-[data-testid="stSidebarNav"] a {
-  border-radius: var(--radius-md) !important;
-  padding: 0.45rem 0.75rem !important;
+[data-testid="stSidebarNav"] a span {
   font-size: 0.875rem !important;
   font-weight: 500 !important;
-  color: var(--text-secondary) !important;
+  color: var(--text-secondary-light-surface) !important;
   transition: all 0.15s ease !important;
 }
 
 [data-testid="stSidebarNav"] a:hover {
-  background-color: var(--surface-muted) !important;
-  color: var(--text-primary) !important;
+  background-color: var(--surface-light-muted) !important;
+}
+
+[data-testid="stSidebarNav"] a:hover span {
+  color: var(--text-primary-light-surface) !important;
 }
 
 [data-testid="stSidebarNav"] a[aria-current="page"] {
   background-color: var(--accent-light) !important;
-  color: var(--accent-primary) !important;
+  border: 1px solid var(--accent-border) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+[data-testid="stSidebarNav"] a[aria-current="page"] span {
+  color: var(--text-accent-light-surface) !important;
   font-weight: 600 !important;
 }
 
+/* Sidebar Secondary Buttons (Example Questions, Session Management, Logout) */
+[data-testid="stSidebar"] .stButton > button {
+  background-color: var(--btn-secondary-light-bg) !important;
+  color: var(--btn-secondary-light-text) !important;
+  border: 1px solid var(--btn-secondary-light-border) !important;
+  border-radius: var(--radius-md) !important;
+  font-size: 0.825rem !important;
+  font-weight: 500 !important;
+  box-shadow: var(--shadow-xs) !important;
+  text-align: left !important;
+  padding: 0.45rem 0.75rem !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span {
+  color: var(--btn-secondary-light-text) !important;
+  font-weight: 500 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover {
+  background-color: var(--btn-secondary-light-hover-bg) !important;
+  border-color: var(--border-light-strong) !important;
+  color: var(--text-primary-light-surface) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover p,
+[data-testid="stSidebar"] .stButton > button:hover span {
+  color: var(--text-primary-light-surface) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:active {
+  background-color: #e2e8f0 !important;
+}
+
+/* Sidebar Checkboxes (Developer Settings) */
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label span,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label p {
+  color: var(--text-primary-light-surface) !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+}
+
+/* Sidebar Expanders (Diagnostics) */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background-color: var(--surface-light-card) !important;
+  border: 1px solid var(--border-light-surface) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background-color: var(--surface-light-subtle) !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] summary span,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+  color: var(--text-primary-light-surface) !important;
+  font-weight: 500 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+  background-color: var(--surface-light-card) !important;
+  border-top: 1px solid var(--border-light-surface) !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] p,
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] span {
+  color: var(--text-secondary-light-surface) !important;
+  font-size: 0.825rem !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] code {
+  color: var(--text-primary-light-surface) !important;
+  background-color: var(--surface-light-muted) !important;
+  border: 1px solid var(--border-light-surface) !important;
+}
+
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+  color: var(--text-muted-light-surface) !important;
+  font-size: 0.8rem !important;
+}
+
+[data-testid="stSidebar"] .stMarkdown p {
+  color: var(--text-secondary-light-surface) !important;
+}
+
 /* ==============================================================================
-   3. Buttons & Controls
+   3. Buttons & Action Controls
    ============================================================================== */
 
-/* Primary Button: Clean Indigo */
+/* Primary Button: Vibrant Indigo */
 button[kind="primary"],
 .stButton > button[kind="primary"] {
-  background-color: var(--accent-primary) !important;
-  color: var(--text-on-accent) !important;
-  border: 1px solid var(--accent-primary) !important;
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
+  border: 1px solid var(--btn-primary-border) !important;
   border-radius: var(--radius-md) !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
   font-size: 0.875rem !important;
   padding: 0.45rem 1rem !important;
-  box-shadow: var(--shadow-xs) !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25) !important;
   transition: all 0.15s ease-in-out !important;
+}
+
+button[kind="primary"] p,
+button[kind="primary"] span,
+.stButton > button[kind="primary"] p,
+.stButton > button[kind="primary"] span {
+  color: var(--btn-primary-text) !important;
+  font-weight: 600 !important;
 }
 
 button[kind="primary"]:hover,
 .stButton > button[kind="primary"]:hover {
-  background-color: var(--accent-hover) !important;
-  border-color: var(--accent-hover) !important;
+  background-color: var(--btn-primary-hover-bg) !important;
+  border-color: var(--btn-primary-hover-bg) !important;
   box-shadow: var(--shadow-sm) !important;
 }
 
@@ -177,51 +377,68 @@ button[kind="primary"]:active,
   background-color: var(--accent-active) !important;
 }
 
-/* Secondary Button: Clean Outlined */
-button[kind="secondary"],
-.stButton > button:not([kind="primary"]) {
-  background-color: var(--surface-card) !important;
-  color: var(--text-secondary) !important;
-  border: 1px solid var(--border-subtle) !important;
+/* Secondary Button in Main Dark Content Area (e.g. Preview buttons, etc.) */
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]) {
+  background-color: var(--btn-secondary-dark-bg) !important;
+  color: var(--btn-secondary-dark-text) !important;
+  border: 1px solid var(--btn-secondary-dark-border) !important;
   border-radius: var(--radius-md) !important;
   font-weight: 500 !important;
   font-size: 0.85rem !important;
   transition: all 0.15s ease-in-out !important;
 }
 
-button[kind="secondary"]:hover,
-.stButton > button:not([kind="primary"]):hover {
-  background-color: var(--surface-muted) !important;
-  border-color: var(--border-medium) !important;
-  color: var(--text-primary) !important;
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]) p,
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]) span {
+  color: var(--btn-secondary-dark-text) !important;
+  font-weight: 500 !important;
 }
 
-/* Disabled button state */
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):hover {
+  background-color: var(--btn-secondary-dark-hover-bg) !important;
+  border-color: var(--btn-secondary-dark-hover-border) !important;
+  color: #ffffff !important;
+}
+
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):hover p,
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):hover span {
+  color: #ffffff !important;
+}
+
+/* Disabled Button State */
 button:disabled,
 .stButton > button:disabled {
-  opacity: 0.55 !important;
+  opacity: var(--disabled-opacity) !important;
   cursor: not-allowed !important;
 }
 
 /* ==============================================================================
-   4. Unified AI Prompt Bar (ChatGPT / Claude Command Style)
+   4. Unified AI Prompt Bar (Question Entry & Model Selector)
    ============================================================================== */
 
+/* AI Form Container */
 [data-testid="stForm"] {
-  border: 1px solid var(--border-medium) !important;
+  border: 1px solid var(--border-dark-surface) !important;
   border-radius: var(--radius-lg) !important;
-  background-color: var(--surface-card) !important;
-  box-shadow: var(--shadow-sm) !important;
+  background-color: var(--surface-dark-card) !important;
+  box-shadow: var(--shadow-md) !important;
   padding: 0.85rem 1rem 0.65rem 1rem !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 [data-testid="stForm"]:focus-within {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
+  box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-md) !important;
 }
 
-/* Text Input inside form */
+/* Form Labels (if visible) */
+[data-testid="stForm"] label,
+[data-testid="stForm"] label p {
+  color: var(--text-secondary-dark-surface) !important;
+  font-weight: 500 !important;
+}
+
+/* Seamless text input inside prompt form */
 [data-testid="stForm"] [data-testid="stTextInput"] {
   margin-bottom: 0.25rem !important;
 }
@@ -230,9 +447,14 @@ button:disabled,
   border: none !important;
   background: transparent !important;
   font-size: 0.95rem !important;
-  color: var(--text-primary) !important;
+  color: var(--text-primary-dark-surface) !important;
   box-shadow: none !important;
   padding: 0.4rem 0.2rem !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] input::placeholder {
+  color: var(--text-muted-dark-surface) !important;
+  opacity: 1 !important;
 }
 
 [data-testid="stForm"] [data-testid="stTextInput"] input:focus {
@@ -243,110 +465,226 @@ button:disabled,
 /* Bottom toolbar row inside form */
 [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
   align-items: center !important;
-  padding-top: 0.35rem !important;
-  border-top: 1px solid #f1f5f9 !important;
-  margin-top: 0.25rem !important;
+  padding-top: 0.4rem !important;
+  border-top: 1px solid var(--border-dark-subtle) !important;
+  margin-top: 0.3rem !important;
 }
 
-/* Compact model selector in bottom left */
+/* Compact model selector in bottom left of prompt bar */
 [data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] {
-  background-color: var(--surface-muted) !important;
-  border: 1px solid var(--border-subtle) !important;
+  background-color: rgba(30, 41, 59, 0.75) !important;
+  border: 1px solid var(--border-dark-surface) !important;
   border-radius: var(--radius-full) !important;
-  min-height: 2rem !important;
-  height: 2rem !important;
+  min-height: 2.1rem !important;
+  height: 2.1rem !important;
   font-size: 0.8rem !important;
-  padding: 0 0.35rem !important;
+  padding: 0 0.5rem !important;
   font-weight: 500 !important;
 }
 
 [data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"]:hover {
-  border-color: var(--border-medium) !important;
-  background-color: #e2e8f0 !important;
+  border-color: var(--border-dark-strong) !important;
+  background-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] * {
+  color: var(--text-primary-dark-surface) !important;
+  font-weight: 500 !important;
+  font-size: 0.8rem !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] svg {
+  fill: var(--text-secondary-dark-surface) !important;
+}
+
+/* BaseWeb Select Dropdown Popover */
+div[data-baseweb="popover"] {
+  background-color: var(--surface-dark-card) !important;
+  border: 1px solid var(--border-dark-surface) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+  overflow: hidden !important;
+}
+
+div[data-baseweb="popover"] ul[role="listbox"] {
+  background-color: var(--surface-dark-card) !important;
+  padding: 0.25rem !important;
+}
+
+div[data-baseweb="popover"] li[role="option"] {
+  background-color: var(--surface-dark-card) !important;
+  color: var(--text-primary-dark-surface) !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 0.5rem 0.75rem !important;
+  transition: all 0.15s ease !important;
+}
+
+div[data-baseweb="popover"] li[role="option"]:hover,
+div[data-baseweb="popover"] li[role="option"][aria-selected="true"] {
+  background-color: var(--accent-primary) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+div[data-baseweb="popover"] li[role="option"] * {
+  color: inherit !important;
+}
+
+/* Access Gate Password Input override */
+[data-testid="stForm"]:has(#app_access_password_input) [data-testid="stTextInput"] input {
+  border: 1px solid var(--border-dark-surface) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 0.5rem 0.75rem !important;
+  background-color: var(--surface-dark-muted) !important;
+  color: var(--text-primary-dark-surface) !important;
 }
 
 /* ==============================================================================
-   5. Dataset & Database Explorer Styling
+   5. Metadata Badges, Tabs & Schema Expanders
    ============================================================================== */
 
-/* Compact metadata badges */
+/* Metadata Badges / Pills on Dark Surface */
 .metadata-pill {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.75rem;
   font-size: 0.775rem;
   font-weight: 500;
   border-radius: var(--radius-full);
-  background-color: var(--surface-muted);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
+  background-color: rgba(30, 41, 59, 0.75);
+  color: var(--text-secondary-dark-surface);
+  border: 1px solid var(--border-dark-surface);
   margin-right: 0.45rem;
   margin-bottom: 0.45rem;
   box-shadow: var(--shadow-xs);
 }
 
 .metadata-pill strong {
-  color: var(--text-primary);
+  color: var(--text-primary-dark-surface);
+  margin-right: 0.3rem;
 }
 
-/* Schema Expanders */
+/* Streamlit Tabs on Dark Surface */
+[data-testid="stTabs"] {
+  border-bottom: 1px solid var(--border-dark-surface) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  background-color: transparent !important;
+  gap: 0.5rem !important;
+  border-bottom: 1px solid var(--border-dark-surface) !important;
+}
+
+[data-testid="stTabs"] button[role="tab"] {
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  color: var(--text-muted-dark-surface) !important;
+  padding: 0.55rem 1rem !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-testid="stTabs"] button[role="tab"] p {
+  color: inherit !important;
+  font-weight: inherit !important;
+}
+
+[data-testid="stTabs"] button[role="tab"]:hover {
+  color: var(--text-primary-dark-surface) !important;
+  border-bottom-color: var(--border-dark-strong) !important;
+}
+
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+  color: var(--text-accent-dark-surface) !important;
+  font-weight: 600 !important;
+  border-bottom: 2px solid var(--accent-primary) !important;
+}
+
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p {
+  color: var(--text-accent-dark-surface) !important;
+}
+
+/* Schema Expanders on Main Dark Area */
 [data-testid="stExpander"] {
-  border: 1px solid var(--border-subtle) !important;
+  border: 1px solid var(--border-dark-surface) !important;
   border-radius: var(--radius-md) !important;
-  background-color: var(--surface-card) !important;
+  background-color: var(--surface-dark-card) !important;
   margin-bottom: 0.45rem !important;
   overflow: hidden !important;
   box-shadow: var(--shadow-xs) !important;
-  transition: border-color 0.15s ease !important;
+  transition: border-color 0.15s ease, background-color 0.15s ease !important;
 }
 
 [data-testid="stExpander"]:hover {
-  border-color: var(--border-medium) !important;
+  border-color: var(--border-dark-strong) !important;
 }
 
 [data-testid="stExpander"] summary {
   font-size: 0.85rem !important;
   font-weight: 500 !important;
-  color: var(--text-primary) !important;
-  padding: 0.5rem 0.75rem !important;
-  background-color: #fafbfc !important;
+  color: var(--text-primary-dark-surface) !important;
+  padding: 0.55rem 0.85rem !important;
+  background-color: rgba(30, 41, 59, 0.6) !important;
   transition: background-color 0.15s ease !important;
 }
 
 [data-testid="stExpander"] summary:hover {
-  background-color: var(--surface-muted) !important;
+  background-color: rgba(30, 41, 59, 0.9) !important;
 }
 
-/* Tabs */
-[data-testid="stTabs"] button[role="tab"] {
-  font-size: 0.85rem !important;
-  font-weight: 500 !important;
-  color: var(--text-secondary) !important;
-  padding: 0.5rem 1rem !important;
-}
-
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-  color: var(--accent-primary) !important;
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span {
+  color: var(--text-primary-dark-surface) !important;
   font-weight: 600 !important;
-  border-bottom-color: var(--accent-primary) !important;
 }
 
-/* Preview button styling next to expanders */
+[data-testid="stExpander"] summary svg {
+  fill: var(--text-secondary-dark-surface) !important;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+  background-color: var(--surface-dark-card) !important;
+  color: var(--text-primary-dark-surface) !important;
+  border-top: 1px solid var(--border-dark-surface) !important;
+  padding: 0.75rem 0.85rem !important;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] p,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] span {
+  color: var(--text-secondary-dark-surface) !important;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] [data-testid="stCaptionContainer"] p,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] .stCaption {
+  color: var(--text-muted-dark-surface) !important;
+  font-size: 0.825rem !important;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] strong {
+  color: var(--text-primary-dark-surface) !important;
+}
+
+/* Preview button alignment next to expanders */
 div[data-testid="stHorizontalBlock"]:has([data-testid="stExpander"]) .stButton > button {
-  height: 2.35rem !important;
+  height: 2.45rem !important;
   margin-top: 0.1rem !important;
   font-size: 0.8rem !important;
   font-weight: 500 !important;
 }
 
 /* ==============================================================================
-   6. Dedicated Scrollable Conversation History Panel
+   6. Dedicated Scrollable Conversation History Panel & Chat Bubbles
    ============================================================================== */
 
 /* Scrollable Container with border */
 [data-testid="stVerticalBlockBorderWrapper"] {
-  border-color: var(--border-subtle) !important;
+  border: 1px solid var(--border-dark-surface) !important;
   border-radius: var(--radius-lg) !important;
-  background-color: var(--surface-card) !important;
+  background-color: var(--surface-dark-card) !important;
   box-shadow: var(--shadow-xs) !important;
 }
 
@@ -359,24 +697,52 @@ div[data-testid="stHorizontalBlock"]:has([data-testid="stExpander"]) .stButton >
   line-height: 1.55 !important;
 }
 
-/* User Message Bubble: Subtle Muted Background */
+/* User Message Bubble: Distinct Dark Well */
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-  background-color: var(--surface-muted) !important;
-  border: 1px solid var(--border-subtle) !important;
+  background-color: #1e293b !important;
+  border: 1px solid var(--border-dark-surface) !important;
 }
 
-/* Assistant Message Bubble: Clean White Surface with Indigo Accent */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) span,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) strong {
+  color: var(--text-primary-dark-surface) !important;
+}
+
+/* Assistant Message Bubble: Deep Slate with Indigo Left Accent */
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
-  background-color: var(--surface-card) !important;
-  border: 1px solid var(--border-subtle) !important;
+  background-color: rgba(30, 41, 59, 0.45) !important;
+  border: 1px solid var(--border-dark-subtle) !important;
   border-left: 3px solid var(--accent-primary) !important;
 }
 
-/* Code and Table overflow within chat */
-[data-testid="stChatMessage"] pre,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) span,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) li,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) strong {
+  color: var(--text-primary-dark-surface) !important;
+}
+
+/* Inline Code & Code Blocks inside chat messages */
 [data-testid="stChatMessage"] code {
   font-family: var(--font-mono) !important;
+  color: #c7d2fe !important;
+  background-color: rgba(49, 46, 129, 0.4) !important;
+  border: 1px solid rgba(99, 102, 241, 0.3) !important;
   border-radius: var(--radius-sm) !important;
+  padding: 0.15rem 0.35rem !important;
+}
+
+[data-testid="stChatMessage"] pre {
+  background-color: #0b0f19 !important;
+  border: 1px solid var(--border-dark-surface) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+[data-testid="stChatMessage"] pre code {
+  color: #e2e8f0 !important;
+  background-color: transparent !important;
+  border: none !important;
 }
 
 /* Custom Sleek Scrollbar */
@@ -390,42 +756,132 @@ div[data-testid="stHorizontalBlock"]:has([data-testid="stExpander"]) .stButton >
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #334155;
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #475569;
 }
 
 /* ==============================================================================
-   7. Modal Dialogs (st.dialog)
+   7. Modal Dialogs (st.dialog), Table Previews & ER Diagram
    ============================================================================== */
 
 div[data-testid="stDialog"] {
+  background-color: var(--surface-dark-card) !important;
+  border: 1px solid var(--border-dark-surface) !important;
   border-radius: var(--radius-lg) !important;
-  border: 1px solid var(--border-medium) !important;
+  color: var(--text-primary-dark-surface) !important;
   box-shadow: var(--shadow-lg) !important;
 }
 
 div[data-testid="stDialog"] header {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border-dark-surface) !important;
   padding-bottom: 0.5rem !important;
-  border-bottom: 1px solid var(--border-subtle) !important;
 }
 
-/* Graphviz ERD Container */
+div[data-testid="stDialog"] header h2,
+div[data-testid="stDialog"] header [data-testid="stHeading"],
+div[data-testid="stDialog"] h2,
+div[data-testid="stDialog"] h3 {
+  color: var(--text-primary-dark-surface) !important;
+  font-weight: 600 !important;
+}
+
+div[data-testid="stDialog"] header button svg {
+  fill: var(--text-secondary-dark-surface) !important;
+}
+
+div[data-testid="stDialog"] header button:hover svg {
+  fill: var(--text-primary-dark-surface) !important;
+}
+
+div[data-testid="stDialog"] p,
+div[data-testid="stDialog"] span {
+  color: var(--text-secondary-dark-surface) !important;
+}
+
+div[data-testid="stDialog"] strong {
+  color: var(--text-primary-dark-surface) !important;
+}
+
+div[data-testid="stDialog"] [data-testid="stCaptionContainer"] p {
+  color: var(--text-muted-dark-surface) !important;
+}
+
+/* Dialog secondary action button */
+div[data-testid="stDialog"] .stButton > button {
+  background-color: var(--btn-secondary-dark-bg) !important;
+  color: var(--btn-secondary-dark-text) !important;
+  border: 1px solid var(--btn-secondary-dark-border) !important;
+}
+
+div[data-testid="stDialog"] .stButton > button:hover {
+  background-color: var(--btn-secondary-dark-hover-bg) !important;
+}
+
+/* Graphviz ERD Container & High-Contrast SVG Rendering */
 [data-testid="stGraphvizChart"] {
-  background-color: #fafbfc !important;
-  border: 1px solid var(--border-subtle) !important;
+  background-color: #ffffff !important;
+  border: 1px solid var(--border-light-medium) !important;
   border-radius: var(--radius-md) !important;
-  padding: 1rem !important;
+  padding: 1.25rem !important;
   margin-bottom: 1rem !important;
   display: flex !important;
   justify-content: center !important;
+  box-shadow: var(--shadow-sm) !important;
+  overflow-x: auto !important;
+}
+
+[data-testid="stGraphvizChart"] svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* Force high contrast dark text on white node tables */
+[data-testid="stGraphvizChart"] svg text {
+  fill: #0f172a !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* Preserve crisp white text on colored header banners */
+[data-testid="stGraphvizChart"] svg text[fill="#ffffff"],
+[data-testid="stGraphvizChart"] svg [fill="#ffffff"] text {
+  fill: #ffffff !important;
+}
+
+/* Edge labels (cardinalities and foreign key targets) */
+[data-testid="stGraphvizChart"] svg .edge text {
+  fill: #4338ca !important;
+  font-weight: 600 !important;
 }
 
 /* ==============================================================================
-   8. Responsive Layout Adjustments
+   8. Streamlit Alert & Dataframe Polish
+   ============================================================================== */
+
+[data-testid="stAlert"] {
+  border-radius: var(--radius-md) !important;
+  padding: 0.75rem 1rem !important;
+}
+
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] span {
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+}
+
+[data-testid="stDataFrame"] {
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border-dark-surface) !important;
+  overflow: hidden !important;
+}
+
+/* ==============================================================================
+   9. Responsive Layout Adjustments
    ============================================================================== */
 
 @media (max-width: 768px) {

@@ -208,7 +208,8 @@ def generate_erd_dot() -> str:
     node [
         shape=none,
         fontname="Helvetica, Arial, sans-serif",
-        fontsize=9
+        fontsize=9,
+        fontcolor="#0f172a"
     ];
     edge [
         fontname="Helvetica, Arial, sans-serif",
