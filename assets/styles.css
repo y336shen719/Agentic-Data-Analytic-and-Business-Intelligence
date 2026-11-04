@@ -47,6 +47,7 @@
   --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
   --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
   --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
 }
 
 /* ==============================================================================
@@ -77,12 +78,12 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Reduce excessive top padding on main content area for clean SaaS layout */
 .block-container {
-  padding-top: 1.75rem !important;
+  padding-top: 1.5rem !important;
   padding-bottom: 2rem !important;
 }
 
 /* ==============================================================================
-   2. Sidebar SaaS Layout
+   2. Sidebar SaaS Layout & Multipage Navigation
    ============================================================================== */
 
 [data-testid="stSidebar"] {
@@ -102,7 +103,7 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase !important;
   letter-spacing: 0.06em !important;
   color: var(--text-muted) !important;
-  margin-top: 1rem !important;
+  margin-top: 0.9rem !important;
   margin-bottom: 0.25rem !important;
 }
 
@@ -113,6 +114,37 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary) !important;
   letter-spacing: -0.02em !important;
   margin-bottom: 0.25rem !important;
+}
+
+/* Streamlit Native Navigation Links in Sidebar */
+[data-testid="stSidebarNav"] {
+  padding-bottom: 0.5rem !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  margin-bottom: 0.75rem !important;
+}
+
+[data-testid="stSidebarNav"] ul {
+  gap: 0.25rem !important;
+}
+
+[data-testid="stSidebarNav"] a {
+  border-radius: var(--radius-md) !important;
+  padding: 0.45rem 0.75rem !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-testid="stSidebarNav"] a:hover {
+  background-color: var(--surface-muted) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-testid="stSidebarNav"] a[aria-current="page"] {
+  background-color: var(--accent-light) !important;
+  color: var(--accent-primary) !important;
+  font-weight: 600 !important;
 }
 
 /* ==============================================================================
@@ -172,46 +204,84 @@ button:disabled,
 }
 
 /* ==============================================================================
-   4. Form & Question Input Styling (Command Bar Look)
+   4. Unified AI Prompt Bar (ChatGPT / Claude Command Style)
    ============================================================================== */
 
 [data-testid="stForm"] {
-  border: 1px solid var(--border-subtle) !important;
+  border: 1px solid var(--border-medium) !important;
   border-radius: var(--radius-lg) !important;
   background-color: var(--surface-card) !important;
-  box-shadow: var(--shadow-xs) !important;
-  padding: 0.75rem 1rem !important;
+  box-shadow: var(--shadow-sm) !important;
+  padding: 0.85rem 1rem 0.65rem 1rem !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 [data-testid="stForm"]:focus-within {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
 }
 
 /* Text Input inside form */
-[data-testid="stForm"] input[type="text"] {
-  border-radius: var(--radius-md) !important;
-  font-size: 0.925rem !important;
+[data-testid="stForm"] [data-testid="stTextInput"] {
+  margin-bottom: 0.25rem !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] input {
+  border: none !important;
+  background: transparent !important;
+  font-size: 0.95rem !important;
   color: var(--text-primary) !important;
+  box-shadow: none !important;
+  padding: 0.4rem 0.2rem !important;
+}
+
+[data-testid="stForm"] [data-testid="stTextInput"] input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Bottom toolbar row inside form */
+[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+  align-items: center !important;
+  padding-top: 0.35rem !important;
+  border-top: 1px solid #f1f5f9 !important;
+  margin-top: 0.25rem !important;
+}
+
+/* Compact model selector in bottom left */
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"] {
+  background-color: var(--surface-muted) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-full) !important;
+  min-height: 2rem !important;
+  height: 2rem !important;
+  font-size: 0.8rem !important;
+  padding: 0 0.35rem !important;
+  font-weight: 500 !important;
+}
+
+[data-testid="stForm"] [data-testid="stSelectbox"] div[data-baseweb="select"]:hover {
+  border-color: var(--border-medium) !important;
+  background-color: #e2e8f0 !important;
 }
 
 /* ==============================================================================
-   5. Dataset Explorer & Schema Tabs
+   5. Dataset & Database Explorer Styling
    ============================================================================== */
 
-/* Compact dataset badges */
+/* Compact metadata badges */
 .metadata-pill {
   display: inline-block;
-  padding: 0.2rem 0.65rem;
-  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.775rem;
   font-weight: 500;
   border-radius: var(--radius-full);
   background-color: var(--surface-muted);
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
-  margin-right: 0.4rem;
-  margin-bottom: 0.4rem;
+  margin-right: 0.45rem;
+  margin-bottom: 0.45rem;
+  box-shadow: var(--shadow-xs);
 }
 
 .metadata-pill strong {
@@ -225,6 +295,12 @@ button:disabled,
   background-color: var(--surface-card) !important;
   margin-bottom: 0.45rem !important;
   overflow: hidden !important;
+  box-shadow: var(--shadow-xs) !important;
+  transition: border-color 0.15s ease !important;
+}
+
+[data-testid="stExpander"]:hover {
+  border-color: var(--border-medium) !important;
 }
 
 [data-testid="stExpander"] summary {
@@ -251,6 +327,15 @@ button:disabled,
 [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
   color: var(--accent-primary) !important;
   font-weight: 600 !important;
+  border-bottom-color: var(--accent-primary) !important;
+}
+
+/* Preview button styling next to expanders */
+div[data-testid="stHorizontalBlock"]:has([data-testid="stExpander"]) .stButton > button {
+  height: 2.35rem !important;
+  margin-top: 0.1rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
 }
 
 /* ==============================================================================
@@ -280,7 +365,7 @@ button:disabled,
   border: 1px solid var(--border-subtle) !important;
 }
 
-/* Assistant Message Bubble: Clean White Surface */
+/* Assistant Message Bubble: Clean White Surface with Indigo Accent */
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
   background-color: var(--surface-card) !important;
   border: 1px solid var(--border-subtle) !important;
@@ -314,31 +399,29 @@ button:disabled,
 }
 
 /* ==============================================================================
-   7. Login Screen (Centered SaaS Card)
+   7. Modal Dialogs (st.dialog)
    ============================================================================== */
 
-.login-container {
-  max-width: 420px;
-  margin: 3.5rem auto 0 auto;
-  padding: 2.25rem;
-  background-color: var(--surface-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  text-align: left;
+div[data-testid="stDialog"] {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-medium) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
-.login-container h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-bottom: 0.35rem;
-  color: var(--text-primary);
+div[data-testid="stDialog"] header {
+  padding-bottom: 0.5rem !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
 }
 
-.login-container p {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  margin-bottom: 1.25rem;
+/* Graphviz ERD Container */
+[data-testid="stGraphvizChart"] {
+  background-color: #fafbfc !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 1rem !important;
+  margin-bottom: 1rem !important;
+  display: flex !important;
+  justify-content: center !important;
 }
 
 /* ==============================================================================
@@ -346,12 +429,12 @@ button:disabled,
    ============================================================================== */
 
 @media (max-width: 768px) {
-  .login-container {
-    margin-top: 1.5rem;
-    padding: 1.5rem;
+  .block-container {
+    padding-top: 1rem !important;
+    padding-bottom: 1.5rem !important;
   }
-  
+
   [data-testid="stForm"] {
-    padding: 0.5rem 0.75rem !important;
+    padding: 0.65rem 0.75rem !important;
   }
 }
