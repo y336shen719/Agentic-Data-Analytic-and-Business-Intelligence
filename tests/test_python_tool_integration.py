@@ -401,7 +401,7 @@ def test_langgraph_registration_with_all_tools():
     store = DatasetStore()
     all_tools = create_sql_tools(dataset_store=store) + create_python_analysis_tools(dataset_store=store)
 
-    graph = create_agent_graph(tools=all_tools)
+    graph = create_agent_graph(llm=DynamicMultiStepAnalystModel(), tools=all_tools)
     assert graph is not None
 
     # Inspect nodes in compiled state graph

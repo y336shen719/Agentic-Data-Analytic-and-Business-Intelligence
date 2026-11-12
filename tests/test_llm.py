@@ -77,6 +77,8 @@ def test_config_bad_key_file_does_not_fall_back(tmp_path):
 
 @pytest.mark.unit
 def test_dotenv_loading_remains_enabled(tmp_path, monkeypatch):
+    # This test explicitly loads only the synthetic temporary file, even in CI.
+    monkeypatch.delenv("PYTHON_DOTENV_DISABLED", raising=False)
     dotenv_file = tmp_path / ".env"
     dotenv_file.write_text("OPENAI_API_KEY=dotenv-test-key\n", encoding="utf-8")
     monkeypatch.delenv("OPENAI_API_KEY_FILE", raising=False)
