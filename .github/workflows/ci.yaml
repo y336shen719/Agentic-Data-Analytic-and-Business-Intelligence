@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -24,12 +24,12 @@ jobs:
       MPLBACKEND: Agg
     steps:
       - name: Check out code and tracked database
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11.18"
           cache: pip
@@ -55,18 +55,19 @@ jobs:
 
   build:
     name: Build Linux AMD64 image
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     needs: test
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out tested code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build image without publishing
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile
@@ -75,3 +76,92 @@ jobs:
           tags: agentic-data-analyst:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
+
+  publish:
+    name: Publish Linux AMD64 image to GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.push.outputs.digest || steps.existing.outputs.digest }}
+    steps:
+      - name: Check out tested main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Define commit-based image reference
+        id: image
+        shell: bash
+        run: |
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/$owner/agentic-data-analyst"
+          echo "name=$image" >> "$GITHUB_OUTPUT"
+          echo "tag=$image:sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preserve an already published commit tag
+        id: existing
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          manifest_path="$RUNNER_TEMP/ghcr-existing-manifest.json"
+          error_path="$RUNNER_TEMP/ghcr-manifest-error.txt"
+          if docker buildx imagetools inspect "$IMAGE_TAG" --format '{{json .Manifest}}' > "$manifest_path" 2> "$error_path"; then
+            python3 - "$manifest_path" <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              digest = json.load(handle)["digest"]
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest), "Invalid registry digest."
+          print("exists=true")
+          print(f"digest={digest}")
+          PY
+          elif grep -Eiq 'manifest unknown|name unknown|not found' "$error_path"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Registry lookup failed; refusing to rebuild or overwrite the commit tag." >&2
+            cat "$error_path" >&2
+            exit 1
+          fi
+      - name: Build and publish tested image
+        id: push
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+      - name: Record published image and digest
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest || steps.existing.outputs.digest }}
+        run: |
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          {
+            echo '### Published image'
+            echo "Tag: \`$IMAGE_TAG\`"
+            echo "Deploy by digest: \`$IMAGE_NAME@$IMAGE_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
