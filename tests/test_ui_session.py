@@ -21,6 +21,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from agent.state import create_initial_state
+from agent.secrets import SecretReadError
 from agent.ui_session import (
     DEFAULT_INCOMPLETE_MESSAGE,
     AgentSession,
@@ -387,6 +388,7 @@ def test_safe_handling_of_graph_execution_errors_and_history_consistency(tmp_pat
 def test_resolve_api_key_precedence(monkeypatch):
     """Verify precedence: User input > Streamlit secrets > Environment variable > None."""
     monkeypatch.setenv("OPENAI_API_KEY", "env_secret_key")
+    monkeypatch.delenv("OPENAI_API_KEY_FILE", raising=False)
 
     # 1. User provided input wins over all
     assert resolve_api_key("user_provided_key") == "user_provided_key"
@@ -413,6 +415,35 @@ def test_resolve_api_key_precedence(monkeypatch):
     # 4. When neither exists, returns None
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert resolve_api_key(None) is None
+
+
+@pytest.mark.parametrize("with_env_key", [False, True])
+def test_resolve_api_key_file(tmp_path, monkeypatch, with_env_key):
+    import streamlit as st
+
+    monkeypatch.setattr("agent.tracing._has_streamlit_context", lambda: False)
+    monkeypatch.setattr(st, "secrets", {})
+    secret_file = tmp_path / "openai-key"
+    secret_file.write_text(" file-test-key\n", encoding="utf-8")
+    monkeypatch.setenv("OPENAI_API_KEY_FILE", str(secret_file))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    if with_env_key:
+        monkeypatch.setenv("OPENAI_API_KEY", "environment-test-key")
+    assert resolve_api_key() == "file-test-key"
+
+
+def test_resolve_api_key_preserves_explicit_and_streamlit_priority(tmp_path, monkeypatch):
+    import streamlit as st
+
+    monkeypatch.setattr("agent.tracing._has_streamlit_context", lambda: True)
+    monkeypatch.setattr(st, "secrets", {"OPENAI_API_KEY": "streamlit-test-key"})
+    monkeypatch.setenv("OPENAI_API_KEY_FILE", str(tmp_path / "missing"))
+    assert resolve_api_key("explicit-test-key") == "explicit-test-key"
+    assert resolve_api_key() == "streamlit-test-key"
+    monkeypatch.setattr(st, "secrets", {})
+    monkeypatch.setenv("OPENAI_API_KEY", "environment-test-key")
+    with pytest.raises(SecretReadError):
+        resolve_api_key()
 
 
 def test_trim_messages_for_context():
