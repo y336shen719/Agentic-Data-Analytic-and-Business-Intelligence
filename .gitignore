@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 .streamlit/secrets.toml
+production.env
+production.env.*
+!production.env.example
 
 # Python environments
 .venv/

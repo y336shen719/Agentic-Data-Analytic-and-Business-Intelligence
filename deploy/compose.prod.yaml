@@ -1,0 +1,52 @@
+# Production runtime configuration. Images are built and published by CI.
+name: agentic-data-analyst-prod
+
+services:
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE to the verified GHCR image digest}
+    platform: linux/amd64
+    pull_policy: missing
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      LANGSMITH_API_KEY_FILE: /run/secrets/langsmith_api_key
+      APP_ACCESS_PASSWORD_FILE: /run/secrets/app_access_password
+      DIAGNOSTIC_PASSWORD_FILE: /run/secrets/diagnostic_password
+      LANGSMITH_TRACING: "true"
+      LANGCHAIN_TRACING_V2: "true"
+      LANGSMITH_PROJECT: agentic-data-analyst
+    secrets:
+      - openai_api_key
+      - langsmith_api_key
+      - app_access_password
+      - diagnostic_password
+    volumes:
+      - type: bind
+        source: ${ADA_DB_FILE:?Set ADA_DB_FILE to the absolute VM database path}
+        target: /app/data/ecommerce.duckdb
+        read_only: true
+        bind:
+          create_host_path: false
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  openai_api_key:
+    file: ${ADA_SECRETS_DIR:?Set ADA_SECRETS_DIR to the absolute VM secrets directory}/openai_api_key
+  langsmith_api_key:
+    file: ${ADA_SECRETS_DIR:?Set ADA_SECRETS_DIR to the absolute VM secrets directory}/langsmith_api_key
+  app_access_password:
+    file: ${ADA_SECRETS_DIR:?Set ADA_SECRETS_DIR to the absolute VM secrets directory}/app_access_password
+  diagnostic_password:
+    file: ${ADA_SECRETS_DIR:?Set ADA_SECRETS_DIR to the absolute VM secrets directory}/diagnostic_password

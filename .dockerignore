@@ -3,6 +3,8 @@
 **/.env.*
 **/secrets.toml
 **/secrets/
+**/production.env
+**/production.env.*
 
 # Databases and datasets are provisioned independently of the image.
 # Keep data/*.py and data/schema.md for application imports and documentation.
