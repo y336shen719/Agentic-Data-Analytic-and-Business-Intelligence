@@ -78,14 +78,12 @@ def get_langsmith_client(api_key: Optional[str] = None) -> Any:
     effective_key = (
         (api_key or "").strip()
         or cfg.api_key
-        or os.environ.get("LANGSMITH_API_KEY")
-        or os.environ.get("LANGCHAIN_API_KEY")
     )
 
     if not effective_key:
         raise ValueError(
-            "LANGSMITH_API_KEY is not configured. Please set LANGSMITH_API_KEY in .env "
-            "or export it in your environment."
+            "LangSmith credentials are unavailable. Check LANGSMITH_API_KEY_FILE "
+            "or configure LANGSMITH_API_KEY."
         )
 
     return langsmith.Client(api_key=effective_key, api_url=cfg.endpoint)
@@ -105,7 +103,7 @@ def check_langsmith_connection(
         "project": cfg.project,
         "endpoint": cfg.endpoint,
         "dataset_name": target_ds,
-        "api_key_configured": bool(cfg.api_key or os.environ.get("LANGSMITH_API_KEY")),
+        "api_key_configured": bool(cfg.api_key),
         "dataset_exists": False,
         "example_count": 0,
         "errors": [],
@@ -113,7 +111,7 @@ def check_langsmith_connection(
 
     if not info["api_key_configured"]:
         info["status"] = "unconfigured"
-        info["errors"].append("LANGSMITH_API_KEY is not set.")
+        info["errors"].append("LangSmith credentials are unavailable.")
         return info
 
     try:

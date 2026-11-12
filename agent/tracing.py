@@ -16,6 +16,8 @@ import uuid
 
 from dotenv import load_dotenv
 
+from agent.secrets import SecretReadError, read_secret
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_LANGSMITH_PROJECT: str = "agentic-data-analyst"
@@ -67,6 +69,8 @@ def _has_streamlit_context() -> bool:
 def _resolve_val_from_env_or_secrets(
     keys: Sequence[str],
     env: Optional[Mapping[str, str]] = None,
+    *,
+    nested_credentials: bool = False,
 ) -> Optional[str]:
     """Retrieve first non-empty configuration value from environment or Streamlit secrets."""
     # 1. Check provided env mapping or os.environ
@@ -82,6 +86,12 @@ def _resolve_val_from_env_or_secrets(
             import streamlit as st
 
             if hasattr(st, "secrets"):
+                if nested_credentials:
+                    credentials = st.secrets.get("credentials", {})
+                    for k in keys:
+                        value = credentials.get(k)
+                        if value is not None and str(value).strip():
+                            return str(value).strip()
                 for k in keys:
                     if k in st.secrets:
                         sec_val = str(st.secrets[k]).strip()
@@ -93,11 +103,22 @@ def _resolve_val_from_env_or_secrets(
     return None
 
 
+def _resolve_secret_value(
+    keys: Sequence[str], env: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """Prefer configured secret files across aliases, then existing value sources."""
+    effective_env = os.environ if env is None else env
+    for name in keys:
+        if (effective_env.get(f"{name}_FILE") or "").strip():
+            return read_secret(name, effective_env)
+    return _resolve_val_from_env_or_secrets(keys, env=env, nested_credentials=True)
+
+
 def sync_secrets_to_environment() -> None:
     """Synchronize Streamlit secrets to process environment variables in main execution thread.
 
-    Ensures background threads and child workers inherit configuration from os.environ
-    without needing to call Streamlit APIs outside of ScriptRunContext.
+    Retains legacy synchronization, except LangSmith API keys: these are passed
+    explicitly to Clients and tracers instead of copied into the environment.
     """
     if not _has_streamlit_context():
         return
@@ -112,8 +133,6 @@ def sync_secrets_to_environment() -> None:
             "OPENAI_API_KEY",
             "LANGSMITH_TRACING",
             "LANGCHAIN_TRACING_V2",
-            "LANGSMITH_API_KEY",
-            "LANGCHAIN_API_KEY",
             "LANGSMITH_PROJECT",
             "LANGCHAIN_PROJECT",
             "LANGSMITH_ENDPOINT",
@@ -138,6 +157,7 @@ def load_langsmith_config(env: Optional[Mapping[str, str]] = None) -> LangSmithC
 
     Reads:
     - LANGSMITH_TRACING (or LANGCHAIN_TRACING_V2) -> bool (default: False)
+    - LANGSMITH_API_KEY_FILE (or LANGCHAIN_API_KEY_FILE), preferred over direct keys
     - LANGSMITH_API_KEY (or LANGCHAIN_API_KEY) -> Optional[str]
     - LANGSMITH_PROJECT (or LANGCHAIN_PROJECT) -> str (default: 'agentic-data-analyst')
     - LANGSMITH_ENDPOINT (or LANGCHAIN_ENDPOINT) -> str (default: 'https://api.smith.langchain.com')
@@ -155,10 +175,13 @@ def load_langsmith_config(env: Optional[Mapping[str, str]] = None) -> LangSmithC
     )
     is_enabled = _is_truthy(raw_tracing)
 
-    raw_key = _resolve_val_from_env_or_secrets(
-        ("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"),
-        env=env,
-    )
+    key_names = ("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY")
+    try:
+        raw_key = _resolve_secret_value(key_names, env=env)
+    except SecretReadError:
+        logger.warning("LangSmith secret file could not be loaded; tracing is disabled.")
+        raw_key = None
+        is_enabled = False
 
     project = (
         _resolve_val_from_env_or_secrets(
@@ -250,10 +273,11 @@ def get_langchain_tracer(config: Optional[LangSmithConfig] = None) -> Optional[A
 
 
 def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> bool:
-    """Synchronize process environment variables for LangChain / LangSmith native tracing.
+    """Synchronize non-secret settings for explicitly configured tracing.
 
-    Sets both LANGSMITH_* and LANGCHAIN_* environment variables to ensure compatibility
-    across all versions of the LangChain and LangGraph SDKs.
+    API keys are never copied into the environment. Graph callbacks, evaluation,
+    and diagnostics receive their Client explicitly. Existing environment keys
+    supplied by the caller remain unchanged for backward compatibility.
 
     Returns:
         True if tracing is actively enabled and configured with an API key, False otherwise.
@@ -264,8 +288,6 @@ def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> boo
     if cfg.enabled and cfg.api_key:
         os.environ["LANGSMITH_TRACING"] = "true"
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGSMITH_API_KEY"] = cfg.api_key
-        os.environ["LANGCHAIN_API_KEY"] = cfg.api_key
         os.environ["LANGSMITH_PROJECT"] = cfg.project
         os.environ["LANGCHAIN_PROJECT"] = cfg.project
         os.environ["LANGSMITH_ENDPOINT"] = cfg.endpoint
@@ -286,7 +308,7 @@ def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> boo
         _CACHED_CLIENT = None
 
         logger.info(
-            "LangSmith native tracing is ACTIVE for project '%s' (endpoint: %s, workspace: %s).",
+            "LangSmith explicit tracing is ACTIVE for project '%s' (endpoint: %s, workspace: %s).",
             cfg.project,
             cfg.endpoint,
             cfg.workspace_id or "default",
@@ -299,9 +321,18 @@ def setup_langsmith_environment(config: Optional[LangSmithConfig] = None) -> boo
         return False
 
 
+def _load_diagnostic_password() -> Optional[str]:
+    """Disable diagnostics safely if an explicitly configured file cannot be read."""
+    try:
+        return _resolve_secret_value(("DIAGNOSTIC_PASSWORD", "ADMIN_PASSWORD"))
+    except SecretReadError:
+        logger.warning("Diagnostic password file could not be loaded; diagnostics are disabled.")
+        return None
+
+
 def has_diagnostic_password_configured() -> bool:
-    """Check whether a diagnostic password is set in environment or secrets."""
-    pwd = _resolve_val_from_env_or_secrets(("DIAGNOSTIC_PASSWORD", "ADMIN_PASSWORD"))
+    """Check for a usable diagnostic password from file, environment or Streamlit."""
+    pwd = _load_diagnostic_password()
     return bool(pwd and pwd.strip())
 
 
@@ -314,7 +345,7 @@ def verify_diagnostic_access(provided_password: Optional[str]) -> bool:
     if not provided_password or not provided_password.strip():
         return False
 
-    configured = _resolve_val_from_env_or_secrets(("DIAGNOSTIC_PASSWORD", "ADMIN_PASSWORD"))
+    configured = _load_diagnostic_password()
     if not configured or not configured.strip():
         return False
 

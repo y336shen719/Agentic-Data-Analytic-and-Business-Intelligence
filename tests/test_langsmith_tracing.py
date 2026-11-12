@@ -38,6 +38,57 @@ def test_tracing_disabled_by_default():
     assert cfg.project == "agentic-data-analyst"
 
 
+@pytest.mark.parametrize("name", ["LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"])
+def test_tracing_reads_secret_file_before_direct_keys(tmp_path, name):
+    secret_file = tmp_path / "key"
+    secret_file.write_text(" synthetic-file-key\n", encoding="utf-8")
+    env = {
+        "LANGSMITH_TRACING": "true",
+        f"{name}_FILE": str(secret_file),
+        "LANGSMITH_API_KEY": "synthetic-direct-key",
+        "LANGCHAIN_API_KEY": "synthetic-legacy-key",
+    }
+    cfg = load_langsmith_config(env)
+    assert cfg.enabled is True
+    assert cfg.api_key == "synthetic-file-key"
+
+
+def test_tracing_file_only_and_canonical_file_priority(tmp_path):
+    secret_file = tmp_path / "key"
+    secret_file.write_text("synthetic-file-key", encoding="utf-8")
+    env = {"LANGSMITH_TRACING": "true", "LANGSMITH_API_KEY_FILE": str(secret_file)}
+    assert load_langsmith_config(env).api_key == "synthetic-file-key"
+    env["LANGCHAIN_API_KEY_FILE"] = str(tmp_path / "missing")
+    assert load_langsmith_config(env).api_key == "synthetic-file-key"
+
+
+@pytest.mark.parametrize("kind", ["missing", "empty", "permission"])
+def test_bad_tracing_file_disables_without_fallback(tmp_path, monkeypatch, caplog, kind):
+    secret_file = tmp_path / "private-path"
+    if kind == "empty":
+        secret_file.write_text(" \n", encoding="utf-8")
+    elif kind == "permission":
+        from pathlib import Path
+
+        def deny_read(self, *args, **kwargs):
+            raise PermissionError("synthetic-private-content")
+
+        monkeypatch.setattr(Path, "read_text", deny_read)
+    monkeypatch.setattr("agent.tracing._has_streamlit_context", lambda: False)
+    cfg = load_langsmith_config({
+        "LANGSMITH_TRACING": "true",
+        "LANGSMITH_API_KEY_FILE": str(secret_file),
+        "LANGSMITH_API_KEY": "synthetic-direct-key",
+        "LANGCHAIN_API_KEY": "synthetic-legacy-key",
+    })
+    assert cfg.enabled is False
+    assert cfg.api_key is None
+    assert "secret file could not be loaded" in caplog.text
+    assert str(secret_file) not in caplog.text
+    assert "synthetic-private-content" not in caplog.text
+    assert "synthetic-direct-key" not in caplog.text
+
+
 def test_tracing_enabled_with_valid_config():
     """Verify that tracing parses correctly when valid environment variables are supplied."""
     env = {
@@ -62,8 +113,10 @@ def test_missing_api_key_gracefully_disables_tracing():
     assert cfg.api_key is None
 
 
-def test_setup_langsmith_environment_sync():
+def test_setup_langsmith_environment_sync(monkeypatch):
     """Verify that setup_langsmith_environment sets matching LANGCHAIN_* and LANGSMITH_* variables."""
+    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+    monkeypatch.delenv("LANGCHAIN_API_KEY", raising=False)
     # When enabled
     cfg_enabled = LangSmithConfig(
         enabled=True,
@@ -75,7 +128,8 @@ def test_setup_langsmith_environment_sync():
     assert is_active is True
     assert os.environ.get("LANGSMITH_TRACING") == "true"
     assert os.environ.get("LANGCHAIN_TRACING_V2") == "true"
-    assert os.environ.get("LANGSMITH_API_KEY") == "lsv2_pt_dummykey"
+    assert "LANGSMITH_API_KEY" not in os.environ
+    assert "LANGCHAIN_API_KEY" not in os.environ
     assert os.environ.get("LANGCHAIN_PROJECT") == "test-proj"
 
     # When disabled
@@ -259,7 +313,7 @@ def test_streamlit_secrets_fallback_for_tracing_config():
             assert cfg.project == "secrets-project"
 
 
-def test_runnable_tracing_config_binds_tracer_when_active():
+def test_runnable_tracing_config_binds_tracer_when_active(monkeypatch):
     """Verify that create_runnable_tracing_config injects LangChainTracer into callbacks when active."""
     env = {
         "LANGSMITH_TRACING": "true",
@@ -268,6 +322,7 @@ def test_runnable_tracing_config_binds_tracer_when_active():
     }
     cfg = load_langsmith_config(env=env)
     setup_langsmith_environment(cfg)
+    monkeypatch.setattr("agent.tracing.load_langsmith_config", lambda: cfg)
 
     config = create_runnable_tracing_config(source="streamlit", session_id="test_sess_123")
     assert "callbacks" in config
@@ -278,6 +333,7 @@ def test_runnable_tracing_config_binds_tracer_when_active():
 
     # Reset
     setup_langsmith_environment(LangSmithConfig(enabled=False, api_key=None))
+    monkeypatch.setattr("agent.tracing.load_langsmith_config", lambda: LangSmithConfig())
     disabled_config = create_runnable_tracing_config(source="streamlit", session_id="test_sess_123")
     assert "callbacks" not in disabled_config
 
@@ -339,7 +395,7 @@ def test_no_api_key_fingerprint_in_logs(caplog):
     assert secret_key not in caplog.text
     assert "super_secret" not in caplog.text
     assert "12345" not in caplog.text
-    assert "LangSmith native tracing is ACTIVE" in caplog.text
+    assert "LangSmith explicit tracing is ACTIVE" in caplog.text
 
 
 def test_has_streamlit_context_guards_against_warnings():
