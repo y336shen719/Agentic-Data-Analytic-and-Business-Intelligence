@@ -38,6 +38,42 @@ from tools.sql_tool import get_database_schema
 APP_PATH = Path(__file__).parent.parent / "app.py"
 
 
+@pytest.mark.parametrize("kind", ["missing", "empty", "permission"])
+def test_secret_file_failure_shows_safe_error_without_initializing_agent(tmp_path, monkeypatch, kind):
+    import streamlit.runtime.secrets as secrets_module
+
+    monkeypatch.setattr(secrets_module.secrets_singleton, "_secrets", {})
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "test-password")
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-fallback-key")
+    secret_file = tmp_path / "private-secret-path"
+    if kind == "empty":
+        secret_file.write_text(" \n", encoding="utf-8")
+    elif kind == "permission":
+        original_read_text = Path.read_text
+
+        def guarded_read_text(self, *args, **kwargs):
+            if self == secret_file:
+                raise PermissionError("synthetic-private-content")
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    monkeypatch.setenv("OPENAI_API_KEY_FILE", str(secret_file))
+    with patch("agent.ui_session.get_or_create_session") as initialize:
+        at = AppTest.from_file(str(APP_PATH), default_timeout=10)
+        at.session_state["authenticated"] = True
+        at.run()
+        initialize.assert_not_called()
+
+    assert not at.exception
+    assert "agent_session" not in at.session_state
+    assert len(at.chat_input) == 0
+    assert any("OpenAI credentials could not be loaded" in error.value for error in at.error)
+    for error in at.error:
+        assert str(secret_file) not in error.value
+        assert "synthetic-private-content" not in error.value
+        assert "synthetic-fallback-key" not in error.value
+
+
 # ==============================================================================
 # 1-4. Access Gate & Authentication Tests
 # ==============================================================================

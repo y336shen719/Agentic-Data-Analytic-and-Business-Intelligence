@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent import llm as llm_module
+from agent import config as config_module
 from agent.config import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_OPENAI_MODEL,
@@ -49,6 +50,42 @@ def test_env_overrides() -> None:
 @pytest.mark.unit
 def test_blank_model_falls_back_to_default() -> None:
     assert load_llm_config({"OPENAI_MODEL": "  "}).model == DEFAULT_OPENAI_MODEL
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("with_env_key", [False, True])
+def test_config_reads_api_key_file(tmp_path, with_env_key):
+    secret_file = tmp_path / "openai-key"
+    secret_file.write_text(" file-test-key\n", encoding="utf-8")
+    env = {"OPENAI_API_KEY_FILE": str(secret_file)}
+    if with_env_key:
+        env["OPENAI_API_KEY"] = "environment-test-key"
+    assert load_llm_config(env).api_key == "file-test-key"
+
+
+@pytest.mark.unit
+def test_config_bad_key_file_does_not_fall_back(tmp_path):
+    with pytest.raises(ConfigError, match="OPENAI_API_KEY_FILE") as caught:
+        load_llm_config({
+            "OPENAI_API_KEY_FILE": str(tmp_path / "missing"),
+            "OPENAI_API_KEY": "environment-test-key",
+        })
+    assert str(tmp_path) not in str(caught.value)
+    assert "environment-test-key" not in str(caught.value)
+    assert caught.value.__suppress_context__
+
+
+@pytest.mark.unit
+def test_dotenv_loading_remains_enabled(tmp_path, monkeypatch):
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text("OPENAI_API_KEY=dotenv-test-key\n", encoding="utf-8")
+    monkeypatch.delenv("OPENAI_API_KEY_FILE", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    real_loader = config_module.load_dotenv
+    monkeypatch.setattr(config_module, "load_dotenv", lambda **kwargs: real_loader(dotenv_file, **kwargs))
+    assert load_llm_config().api_key == "dotenv-test-key"
+    monkeypatch.setenv("OPENAI_API_KEY", "existing-test-key")
+    assert load_llm_config().api_key == "existing-test-key"
 
 
 @pytest.mark.unit

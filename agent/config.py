@@ -11,6 +11,8 @@ from typing import Mapping, Optional
 
 from dotenv import load_dotenv
 
+from agent.secrets import SecretReadError, read_secret
+
 # Default per https://platform.openai.com/docs/models ("most efficient model for
 # focused, high-volume tasks"). Override with OPENAI_MODEL.
 DEFAULT_OPENAI_MODEL: str = "gpt-6-luna"
@@ -52,7 +54,8 @@ def _parse_int(name: str, raw: str) -> int:
 def load_llm_config(env: Optional[Mapping[str, str]] = None) -> LLMConfig:
     """Build an ``LLMConfig`` from environment variables.
 
-    Reads OPENAI_API_KEY, OPENAI_MODEL, OPENAI_TIMEOUT_SECONDS, OPENAI_MAX_RETRIES.
+    Reads OPENAI_API_KEY_FILE (preferred) or OPENAI_API_KEY, plus OPENAI_MODEL,
+    OPENAI_TIMEOUT_SECONDS, and OPENAI_MAX_RETRIES.
     When ``env`` is None, a local ``.env`` file is loaded first (without overriding
     variables already set in the process) and ``os.environ`` is used.
 
@@ -60,7 +63,7 @@ def load_llm_config(env: Optional[Mapping[str, str]] = None) -> LLMConfig:
     can be inspected/tested without credentials.
 
     Raises:
-        ConfigError: on a blank model or out-of-range/non-numeric limits.
+        ConfigError: on invalid limits or an unreadable/empty API key file.
     """
     if env is None:
         load_dotenv(override=False)
@@ -82,6 +85,9 @@ def load_llm_config(env: Optional[Mapping[str, str]] = None) -> LLMConfig:
             f"OPENAI_MAX_RETRIES must be between 0 and {MAX_RETRIES_LIMIT}, got: {retries}"
         )
 
-    api_key = (env.get("OPENAI_API_KEY") or "").strip() or None
+    try:
+        api_key = read_secret("OPENAI_API_KEY", env)
+    except SecretReadError:
+        raise ConfigError("Unable to load OPENAI_API_KEY_FILE; check the configured secret file.") from None
 
     return LLMConfig(model=model, timeout_seconds=timeout, max_retries=retries, api_key=api_key)

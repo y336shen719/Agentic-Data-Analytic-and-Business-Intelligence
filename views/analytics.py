@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from agent.config import DEFAULT_OPENAI_MODEL
+from agent.secrets import SecretReadError
 from agent import ui_session
 from data.prepare_data import DEFAULT_DB_PATH
 from tools.chart_registry import ChartNotFoundError, ChartRegistry
@@ -108,7 +109,11 @@ def render_assistant_message(
 def render_analytics_page() -> None:
     """Render the primary Analytics Workspace page."""
     # Server-side OpenAI API Key resolution
-    resolved_key = ui_session.resolve_api_key(None)
+    try:
+        resolved_key = ui_session.resolve_api_key(None)
+    except SecretReadError:
+        st.error("OpenAI credentials could not be loaded. Please contact the application administrator.")
+        st.stop()
     if not resolved_key:
         st.warning(
             "OpenAI API Key is not configured on the server. "

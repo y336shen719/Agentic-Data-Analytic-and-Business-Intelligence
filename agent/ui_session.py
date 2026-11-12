@@ -34,6 +34,7 @@ from agent.graph import (
     create_agent_graph,
 )
 from agent.llm import create_llm
+from agent.secrets import read_secret
 from agent.state import create_initial_state
 from agent.tool_wrappers import (
     create_chart_generation_tools,
@@ -143,8 +144,11 @@ def resolve_api_key(user_input_key: Optional[str] = None) -> Optional[str]:
     Precedence:
     1. Explicit nonempty user-provided key.
     2. Streamlit secrets (if running in active Streamlit context or test mock).
-    3. Environment variable OPENAI_API_KEY.
-    4. Otherwise, None.
+    3. File configured by OPENAI_API_KEY_FILE.
+    4. Environment variable OPENAI_API_KEY.
+    5. Otherwise, None.
+
+    An unreadable or empty configured file raises SecretReadError.
     """
     if user_input_key and user_input_key.strip():
         return user_input_key.strip()
@@ -174,11 +178,7 @@ def resolve_api_key(user_input_key: Optional[str] = None) -> Optional[str]:
     except Exception:
         pass
 
-    env_key = os.environ.get("OPENAI_API_KEY")
-    if env_key and env_key.strip():
-        return env_key.strip()
-
-    return None
+    return read_secret("OPENAI_API_KEY")
 
 
 def trim_messages_for_context(
