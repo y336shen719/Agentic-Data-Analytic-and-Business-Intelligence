@@ -62,7 +62,7 @@ def test_check_langsmith_connection_unconfigured():
         info = check_langsmith_connection(client=None)
         assert info["status"] == "unconfigured"
         assert info["api_key_configured"] is False
-        assert "LANGSMITH_API_KEY is not set." in info["errors"]
+        assert "LangSmith credentials are unavailable." in info["errors"]
 
 
 def test_check_langsmith_connection_ok():

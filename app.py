@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 
 from agent.config import DEFAULT_OPENAI_MODEL
+from agent.secrets import SecretReadError, read_secret
 from agent.tracing import (
     _has_streamlit_context,
     has_diagnostic_password_configured,
@@ -81,8 +82,8 @@ if STYLES_PATH.exists():
 # ==============================================================================
 
 def get_app_access_password() -> Optional[str]:
-    """Retrieve APP_ACCESS_PASSWORD from environment or Streamlit Secrets."""
-    val: Optional[str] = os.environ.get("APP_ACCESS_PASSWORD")
+    """Read password from secret file, environment, then Streamlit Secrets."""
+    val = read_secret("APP_ACCESS_PASSWORD")
     if not val and _has_streamlit_context():
         try:
             val = st.secrets.get("APP_ACCESS_PASSWORD")
@@ -100,7 +101,11 @@ def check_app_access() -> bool:
     Renders login form if unauthenticated.
     Returns True only when the session is authenticated.
     """
-    configured_password = get_app_access_password()
+    try:
+        configured_password = get_app_access_password()
+    except SecretReadError:
+        st.error("Application configuration error: Access password could not be loaded. Please contact the administrator.")
+        return False
     if not configured_password:
         st.error(
             "Application configuration error: Access password is not configured. "

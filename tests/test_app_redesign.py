@@ -78,6 +78,67 @@ def test_secret_file_failure_shows_safe_error_without_initializing_agent(tmp_pat
 # 1-4. Access Gate & Authentication Tests
 # ==============================================================================
 
+@pytest.mark.parametrize("source", ["file_only", "file_over_environment", "streamlit"])
+def test_access_password_sources(tmp_path, monkeypatch, source):
+    import streamlit.runtime.secrets as secrets_module
+
+    monkeypatch.setattr("agent.ui_session.resolve_api_key", lambda *args: None)
+    monkeypatch.setattr(secrets_module.secrets_singleton, "_secrets", {})
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "")
+    monkeypatch.delenv("APP_ACCESS_PASSWORD_FILE", raising=False)
+    password = "synthetic-login-password"
+    if source == "streamlit":
+        monkeypatch.setattr(secrets_module.secrets_singleton, "_secrets", {"APP_ACCESS_PASSWORD": password})
+    else:
+        secret_file = tmp_path / "password"
+        secret_file.write_text(password + "\n", encoding="utf-8")
+        monkeypatch.setenv("APP_ACCESS_PASSWORD_FILE", str(secret_file))
+        if source == "file_over_environment":
+            monkeypatch.setenv("APP_ACCESS_PASSWORD", "wrong-environment-password")
+
+    at = AppTest.from_file(str(APP_PATH), default_timeout=10).run()
+    assert not at.exception
+    at.text_input[0].set_value(password)
+    next(button for button in at.button if button.label == "Enter").click().run()
+    assert not at.exception
+    assert at.session_state["authenticated"] is True
+
+
+@pytest.mark.parametrize("kind", ["missing", "empty", "permission"])
+@pytest.mark.parametrize("authenticated", [False, True])
+def test_bad_password_file_blocks_access(tmp_path, monkeypatch, kind, authenticated):
+    import streamlit.runtime.secrets as secrets_module
+
+    monkeypatch.setattr(secrets_module.secrets_singleton, "_secrets", {"APP_ACCESS_PASSWORD": "synthetic-fallback"})
+    monkeypatch.setenv("APP_ACCESS_PASSWORD", "synthetic-fallback")
+    secret_file = tmp_path / "private-password-path"
+    if kind == "empty":
+        secret_file.write_text(" \n", encoding="utf-8")
+    elif kind == "permission":
+        original_read_text = Path.read_text
+
+        def guarded_read_text(self, *args, **kwargs):
+            if self == secret_file:
+                raise PermissionError("synthetic-private-content")
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    monkeypatch.setenv("APP_ACCESS_PASSWORD_FILE", str(secret_file))
+    with patch("agent.ui_session.get_or_create_session") as initialize:
+        at = AppTest.from_file(str(APP_PATH), default_timeout=10)
+        at.session_state["authenticated"] = authenticated
+        at.run()
+        initialize.assert_not_called()
+    assert not at.exception
+    assert "agent_session" not in at.session_state
+    assert len(at.chat_input) == 0
+    assert any("Access password could not be loaded" in error.value for error in at.error)
+    for error in at.error:
+        assert str(secret_file) not in error.value
+        assert "synthetic-fallback" not in error.value
+        assert "synthetic-private-content" not in error.value
+
+
 def test_missing_app_access_password_fails_closed(monkeypatch):
     """Criterion 4: If APP_ACCESS_PASSWORD is missing, application must fail closed with error."""
     monkeypatch.delenv("APP_ACCESS_PASSWORD", raising=False)
