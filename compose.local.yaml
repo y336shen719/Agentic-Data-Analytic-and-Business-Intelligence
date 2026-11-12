@@ -1,0 +1,41 @@
+# Local validation only: use the AMD64 image already loaded into Docker Desktop.
+name: agentic-data-analyst-local
+
+services:
+  app:
+    image: agentic-data-analyst:local
+    platform: linux/amd64
+    pull_policy: never
+    init: true
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      APP_ACCESS_PASSWORD_FILE: /run/secrets/app_access_password
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+    secrets:
+      - openai_api_key
+      - app_access_password
+    volumes:
+      - type: bind
+        source: ./data/ecommerce.duckdb
+        target: /app/data/ecommerce.duckdb
+        read_only: true
+        bind:
+          create_host_path: false
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  openai_api_key:
+    file: ${ADA_SECRETS_DIR:?Set ADA_SECRETS_DIR to an absolute directory outside the repository}/openai_api_key
+  app_access_password:
+    file: ${ADA_SECRETS_DIR:?Set ADA_SECRETS_DIR to an absolute directory outside the repository}/app_access_password
