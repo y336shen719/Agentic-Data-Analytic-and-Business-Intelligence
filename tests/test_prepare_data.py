@@ -21,7 +21,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from data.prepare_data import (
     DEFAULT_DB_PATH,
     DEFAULT_FK_CHECKS,
-    DEFAULT_RAW_DIR,
     TABLE_SCHEMAS,
     VIEW_DEFINITIONS,
     CriticalValidationError,
@@ -718,20 +717,16 @@ def test_prod_all_base_tables_exist_and_match_raw_sources(prod_db_con):
 
 @pytest.mark.integration
 def test_prod_validation_functions_pass(prod_db_con):
-    """Directly test production validation functions on the loaded Olist database."""
-    # 1. Source row count reconciliation
-    res_src, fail_src = validate_source_row_counts(prod_db_con, DEFAULT_RAW_DIR)
-    assert len(fail_src) == 0, f"Source row count failures: {fail_src}"
-
-    # 2. Primary key validation
+    """Validate production keys and views independently of raw CSV availability."""
+    # Primary key validation
     res_pk, fail_pk = validate_primary_keys(prod_db_con)
     assert len(fail_pk) == 0, f"Primary key failures: {fail_pk}"
 
-    # 3. Foreign key referential integrity
+    # Foreign key referential integrity
     res_fk, fail_fk = validate_foreign_keys(prod_db_con)
     assert len(fail_fk) == 0, f"Foreign key failures: {fail_fk}"
 
-    # 4. View and financial metrics reconciliation
+    # View and financial metrics reconciliation
     res_views, fail_views = validate_views_and_metrics(prod_db_con)
     assert len(fail_views) == 0, f"View reconciliation failures: {fail_views}"
 
