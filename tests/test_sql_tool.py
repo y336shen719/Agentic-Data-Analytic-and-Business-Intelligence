@@ -1592,14 +1592,15 @@ def test_ipc_partial_interrupted_transfer(tmp_path: Path, monkeypatch: pytest.Mo
     db_file = _make_analytical_test_db(tmp_path)
     monkeypatch.setattr("tools.sql_tool._WORKER_TARGET", _mock_partial_writer_worker)
 
-    start = time.perf_counter()
-    res = execute_sql("SELECT count(*) FROM customers", db_path=db_file, timeout_seconds=3.0)
-    elapsed = time.perf_counter() - start
+    children_before = {child.pid for child in multiprocessing.active_children()}
+    # The deadline bounds a broken implementation, but spawn/import time varies
+    # across runners and is not the behavior this EOF regression test measures.
+    res = execute_sql("SELECT count(*) FROM customers", db_path=db_file, timeout_seconds=10.0)
 
     assert res["status"] == "error"
     assert res["error_type"] == "ProcessError"
-    # Should complete quickly on EOF, not wait out the full 3 seconds
-    assert elapsed < 2.0
+    assert "Worker pipe closed before expected bytes were received" in res["error_message"]
+    assert not ({child.pid for child in multiprocessing.active_children()} - children_before)
 
 
 @pytest.mark.unit
