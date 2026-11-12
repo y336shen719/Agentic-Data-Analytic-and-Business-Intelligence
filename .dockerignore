@@ -1,0 +1,57 @@
+# Runtime credentials must never enter the build context.
+**/.env
+**/.env.*
+**/secrets.toml
+**/secrets/
+
+# Databases and datasets are provisioned independently of the image.
+# Keep data/*.py and data/schema.md for application imports and documentation.
+**/*.duckdb
+**/*.duckdb.wal
+**/*.duckdb.tmp
+**/*.duckdb.tmp/**
+data/raw/
+data/processed/
+data/downloads/
+
+# Local Python environments and caches.
+**/.venv/
+**/venv/
+**/env/
+**/.conda/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/.coverage.*
+**/htmlcov/
+
+# Generated results and logs.
+**/*.log
+logs/
+artifacts/
+outputs/
+evaluation/results/
+
+# Development files; CI tests execute outside the runtime image.
+.git/
+.github/
+.gitignore
+.gitattributes
+AGENTS.md
+tests/
+docs/
+scripts/
+evaluation/
+pytest.ini
+README.md
+.vscode/
+.idea/
+
+# Operating system metadata.
+**/.DS_Store
+**/._*
+
+# Keep assets/ and .streamlit/config.toml in the build context.
